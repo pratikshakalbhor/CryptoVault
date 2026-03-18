@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import './styles/global.css';
-import Sidebar from './components/Sidebar';
-import Topbar  from './components/Topbar';
-import Dashboard from './pages/Dashboard';
-import Upload from './pages/Upload';
-import Verify from './pages/Verify';
-import Files from './pages/Files';
+
+import Login         from './pages/Login';
+import Sidebar       from './components/Sidebar';
+import Topbar        from './components/Topbar';
+import Dashboard     from './pages/Dashboard';
+import Upload        from './pages/Upload';
+import Verify        from './pages/Verify';
+import Files         from './pages/Files';
 import BlockchainLog from './pages/BlockchainLog';
 
 const NAV_LABELS: Record<string, string> = {
@@ -17,22 +19,57 @@ const NAV_LABELS: Record<string, string> = {
 };
 
 export default function App() {
-  const [activePage, setActivePage]     = useState('dashboard');
-  const [notification, setNotification] = useState<{ msg: string; type: string } | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [activePage,    setActivePage]    = useState('dashboard');
+  const [notification,  setNotification]  = useState<{ msg: string; type: string } | null>(null);
 
   const showNotif = (msg: string, type: string) => {
     setNotification({ msg, type });
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const handleConnected = (address: string) => {
+    setWalletAddress(address);
+    setActivePage('dashboard');
+    showNotif('✅ Wallet connected successfully!', 'success');
+  };
+
+  const handleLogout = async () => {
+    setWalletAddress(null);
+    setActivePage('dashboard');
+  };
+
+  // ── Not logged in ──
+  if (!walletAddress) {
+    return (
+      <>
+        <div className="grid-bg" />
+        <Login onConnected={handleConnected} />
+      </>
+    );
+  }
+
+  // ── Logged in ──
   return (
     <>
       <div className="grid-bg" />
-      <div className="noise"   />
+      <div className="noise" />
+
       <div className="app">
-        <Sidebar activePage={activePage} onNavigate={setActivePage} />
+        <Sidebar
+          activePage={activePage}
+          onNavigate={setActivePage}
+          onLogout={handleLogout}
+          walletAddress={walletAddress}
+        />
+
         <main className="main">
-          <Topbar pageTitle={NAV_LABELS[activePage]} />
+          <Topbar
+            pageTitle={NAV_LABELS[activePage]}
+            walletAddress={walletAddress}
+            onDisconnect={handleLogout}
+          />
+
           <div className="content">
             {activePage === 'dashboard'  && <Dashboard     onNavigate={setActivePage} />}
             {activePage === 'upload'     && <Upload        onNotify={showNotif} />}
@@ -42,8 +79,11 @@ export default function App() {
           </div>
         </main>
       </div>
+
       {notification && (
-        <div className={`notification ${notification.type}`}>{notification.msg}</div>
+        <div className={`notification ${notification.type}`}>
+          {notification.msg}
+        </div>
       )}
     </>
   );
