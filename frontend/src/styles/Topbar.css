@@ -1,91 +1,115 @@
-/* ── Topbar ── */
 .topbar {
-  height: 64px;
+  height: 80px;
   border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 28px;
-  background: rgba(13,17,32,0.9);
-  backdrop-filter: blur(12px);
-  position: sticky; top: 0; z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  background: var(--bg);
+  z-index: 20;
 }
 
-.topbar-left { display: flex; flex-direction: column; gap: 2px; }
+.topbar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 
 .page-title {
-  font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: var(--text);
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .page-breadcrumb {
-  font-size: 10px; color: var(--muted);
-  font-family: var(--font-mono); letter-spacing: 0.5px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
-.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
 
-/* Bell Icon */
 .topbar-icon-btn {
-  width: 36px; height: 36px;
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   border: 1px solid var(--border);
-  background: var(--surface2);
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; color: var(--muted);
-  transition: all 0.2s; position: relative;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  cursor: pointer;
+  position: relative;
 }
-.topbar-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 .notif-dot {
-  position: absolute; top: 7px; right: 7px;
-  width: 6px; height: 6px;
-  background: var(--red); border-radius: 50%;
-  border: 1.5px solid var(--surface);
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  background: var(--red);
+  border-radius: 50%;
+  border: 2px solid var(--surface);
 }
 
-/* Wallet Badge */
 .wallet-badge {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 14px;
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 20px; font-size: 12px;
-  font-family: var(--font-mono); color: var(--muted);
-  cursor: default; transition: all 0.2s;
+  padding: 8px 16px;
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 20px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.wallet-badge:hover { border-color: var(--accent); color: var(--accent); }
 
 .wallet-badge-dot {
-  width: 6px; height: 6px;
-  background: var(--green); border-radius: 50%;
-  animation: pulse 2s infinite;
-  box-shadow: 0 0 6px rgba(0,255,157,0.5);
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
 }
 
-/* Avatar */
 .avatar-wrapper {
   position: relative;
   cursor: pointer;
 }
+
 .avatar {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 800; color: white;
-  transition: all 0.2s;
-  border: 2px solid transparent;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #5b21b6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #fff;
+  font-size: 14px;
 }
-.avatar-wrapper:hover .avatar {
-  border-color: var(--red);
-  box-shadow: 0 0 12px rgba(255,59,92,0.3);
-}
+
 .avatar-tooltip {
-  position: absolute; top: 44px; right: 0;
-  background: var(--surface);
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: #000;
   border: 1px solid var(--border);
+  padding: 8px 12px;
+  font-size: 11px;
+  white-space: nowrap;
   border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 11px; font-family: var(--font-mono);
-  color: var(--red); white-space: nowrap;
-  opacity: 0; pointer-events: none;
+  opacity: 0;
+  pointer-events: none;
   transition: opacity 0.2s;
-  z-index: 20;
 }
-.avatar-wrapper:hover .avatar-tooltip { opacity: 1; }
+
+.avatar-wrapper:hover .avatar-tooltip {
+  opacity: 1;
+}

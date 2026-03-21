@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import './styles/global.css';
 
 import Login         from './pages/Login';
@@ -11,6 +12,7 @@ import Files         from './pages/Files';
 import BlockchainLog from './pages/BlockchainLog';
 import Profile       from './pages/Profile';
 import NotFound      from './pages/NotFound';
+import { notifVariants } from './utils/animations';
 
 const NAV_LABELS: Record<string, string> = {
   dashboard:  'Dashboard',
@@ -21,7 +23,7 @@ const NAV_LABELS: Record<string, string> = {
   profile:    'My Profile',
 };
 
-const VALID_PAGES = ['dashboard', 'upload', 'verify', 'files', 'blockchain', 'profile'];
+const VALID_PAGES = ['dashboard','upload','verify','files','blockchain','profile'];
 
 export default function App() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -34,11 +36,7 @@ export default function App() {
   };
 
   const handleNavigate = (page: string) => {
-    if (VALID_PAGES.includes(page)) {
-      setActivePage(page);
-    } else {
-      setActivePage('404');
-    }
+    setActivePage(VALID_PAGES.includes(page) ? page : '404');
   };
 
   const handleConnected = (address: string) => {
@@ -50,7 +48,6 @@ export default function App() {
   const handleLogout = () => {
     setWalletAddress(null);
     setActivePage('dashboard');
-    showNotif('👋 Wallet disconnected.', 'info');
   };
 
   // ── Not logged in ──
@@ -62,8 +59,6 @@ export default function App() {
       </>
     );
   }
-
-  const pageTitle = NAV_LABELS[activePage] || 'Not Found';
 
   return (
     <>
@@ -80,28 +75,42 @@ export default function App() {
 
         <main className="main">
           <Topbar
-            pageTitle={pageTitle}
+            pageTitle={NAV_LABELS[activePage] || 'Not Found'}
             walletAddress={walletAddress}
             onDisconnect={handleLogout}
           />
 
+          {/* Page transition */}
           <div className="content">
-            {activePage === 'dashboard'  && <Dashboard     onNavigate={handleNavigate} />}
-            {activePage === 'upload'     && <Upload        onNotify={showNotif} />}
-            {activePage === 'verify'     && <Verify        onNotify={showNotif} />}
-            {activePage === 'files'      && <Files         onNavigate={handleNavigate} />}
-            {activePage === 'blockchain' && <BlockchainLog />}
-            {activePage === 'profile'    && <Profile       walletAddress={walletAddress} onNavigate={handleNavigate} />}
-            {activePage === '404'        && <NotFound      onNavigate={handleNavigate} />}
+            <AnimatePresence mode="wait">
+              <motion.div key={activePage} style={{ height:'100%' }}>
+                {activePage === 'dashboard'  && <Dashboard     onNavigate={handleNavigate} />}
+                {activePage === 'upload'     && <Upload        onNotify={showNotif} />}
+                {activePage === 'verify'     && <Verify        onNotify={showNotif} />}
+                {activePage === 'files'      && <Files         onNavigate={handleNavigate} />}
+                {activePage === 'blockchain' && <BlockchainLog />}
+                {activePage === 'profile'    && <Profile       walletAddress={walletAddress} onNavigate={handleNavigate} />}
+                {activePage === '404'        && <NotFound      onNavigate={handleNavigate} />}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </main>
       </div>
 
-      {notification && (
-        <div className={`notification ${notification.type}`}>
-          {notification.msg}
-        </div>
-      )}
+      {/* Animated Notification */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            className={`notification ${notification.type}`}
+            variants={notifVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            {notification.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
