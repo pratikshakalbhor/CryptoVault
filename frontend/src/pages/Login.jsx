@@ -16,19 +16,59 @@ export default function Login({ onConnected }) {
   const [address,          setAddress]          = useState('');
 
   const connectMetaMask = async () => {
-    setStatus('connecting'); setConnectingWallet('MetaMask'); setError('');
+    setStatus('connecting');
+    setConnectingWallet('MetaMask');
+    setError('');
+
     try {
-      if (!window.ethereum) throw new Error('MetaMask not installed! Please install MetaMask extension.');
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      if (!accounts.length) throw new Error('No accounts found. Please unlock MetaMask.');
-      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+      if (!window.ethereum) {
+        throw new Error('MetaMask not installed! Please install MetaMask extension.');
+      }
+
+      // ✅ Har veles popup saathi — permissions revoke
+      try {
+        await window.ethereum.request({
+          method: 'wallet_revokePermissions',
+          params: [{ eth_accounts: {} }],
+        });
+      } catch {
+        // Old MetaMask versions madhe support nahi — skip
+      }
+
+      // ✅ Popup trigger karto
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      });
+
+      if (!accounts.length) {
+        throw new Error('No accounts found. Please unlock MetaMask.');
+      }
+
+      // Network check — Sepolia
+      const chainId = await window.ethereum.request({
+        method: 'eth_chainId'
+      });
+
       if (chainId !== '0xaa36a7') {
         try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xaa36a7' }] }); }
         catch { await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{ chainId: '0xaa36a7', chainName: 'Sepolia Testnet', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://rpc.sepolia.org'], blockExplorerUrls: ['https://sepolia.etherscan.io'] }] }); }
       }
-      setAddress(accounts[0]); setStatus('connected');
+
+      setAddress(accounts[0]);
+      setStatus('connected');
       setTimeout(() => onConnected(accounts[0]), 1500);
-    } catch (err) { setError(err.message || 'Connection failed.'); setStatus('error'); }
+
+    } catch (err) {
+      // Error codes
+      if (err.code === 4001) {
+        setError('Connection rejected. Please approve in MetaMask.');
+      } else if (err.code === -32002) {
+        setError('MetaMask already processing. Please open MetaMask manually.');
+      } else {
+        setError(err.message || 'Connection failed');
+      }
+      setStatus('error');
+    }
   };
 
   const connectOther = async (name) => {
