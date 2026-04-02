@@ -4,6 +4,7 @@ import '../styles/Files.css';
 import StatusBadge from '../components/StatusBadge';
 import { pageVariants, cardVariants, tableRow, fadeIn } from '../utils/animations';
 import { getAllFiles, revokeFile } from '../utils/api';
+import { revokeFileOnBlockchain, getTxUrl } from '../utils/blockchain';
 
 export default function Files({ onNavigate, walletAddress }) {
   const [files, setFiles] = useState([]);
@@ -13,9 +14,9 @@ export default function Files({ onNavigate, walletAddress }) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [revoking, setRevoking] = useState('');
+  const [downloading, setDownloading] = useState('');
 
   const fetchFiles = useCallback(async () => {
-    if (!walletAddress) return;
     setLoading(true); setError('');
     try {
       const res = await getAllFiles(walletAddress);
@@ -28,15 +29,67 @@ export default function Files({ onNavigate, walletAddress }) {
   }, [walletAddress]);
 
   useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
+    if (walletAddress) fetchFiles();
+  }, [fetchFiles, walletAddress]);
 
+  // ── Download File ──
+  const handleDownload = async (file) => {
+    setDownloading(file.fileId);
+    try {
+      // Cloudinary URL madhe file aahe — direct download
+      if (file.encryptedUrl && file.encryptedUrl !== '') {
+        const link = document.createElement('a');
+        link.href = file.encryptedUrl;
+        link.download = file.filename;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // File info download karto JSON madhe
+        const fileInfo = {
+          fileId: file.fileId,
+          filename: file.filename,
+          originalHash: file.originalHash,
+          txHash: file.txHash,
+          status: file.status,
+          uploadedAt: file.uploadedAt,
+          walletAddress: file.walletAddress,
+          note: 'Encrypted file is stored on Cloudinary. Use txHash to verify on Etherscan.',
+        };
+        const blob = new Blob([JSON.stringify(fileInfo, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${file.filename}_info.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      alert('Download failed: ' + err.message);
+    } finally {
+      setDownloading('');
+    }
+  };
+
+  // ── Revoke File ──
   const handleRevoke = async (fileId) => {
-    if (!window.confirm('Are you sure you want to revoke this file?')) return;
+    if (!window.confirm('Are you sure you want to revoke this file? This cannot be undone.')) return;
     setRevoking(fileId);
     try {
+      // Revoke on blockchain first if the file was sealed to maintain ledger integrity
+      const file = files.find(f => f.fileId === fileId);
+      if (file && file.txHash && file.txHash !== 'pending') {
+        try {
+          await revokeFileOnBlockchain(fileId);
+        } catch (bcErr) {
+          console.warn("Blockchain revocation failed, proceeding with database revocation:", bcErr);
+        }
+      }
       await revokeFile(fileId);
-      await fetchFiles(); // Refresh
+      await fetchFiles();
     } catch (err) {
       alert('Revoke failed: ' + err.message);
     } finally {
@@ -96,8 +149,9 @@ export default function Files({ onNavigate, walletAddress }) {
 
       {/* Error */}
       {error && (
-        <div style={{ background: 'rgba(255,59,92,0.08)', border: '1px solid rgba(255,59,92,0.25)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
-          ⚠️ {error} <button className="btn btn-outline sm" onClick={fetchFiles} style={{ marginLeft: 12 }}>Retry</button>
+        <div style={{ background: 'rgba(255,59,92,0.08)', border: '1px solid rgba(255,59,92,0.25)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          ⚠️ {error}
+          <button className="btn btn-outline sm" onClick={fetchFiles}>Retry</button>
         </div>
       )}
 
@@ -118,14 +172,13 @@ export default function Files({ onNavigate, walletAddress }) {
           <table className="table">
             <thead>
               <tr>
-                <th>File Name</th><th>Size</th><th>SHA-256 Hash</th>
-                <th>Uploaded</th><th>Status</th><th>Action</th>
+                <th>File Name</th><th>Size</th><th>Hash</th>
+                <th>Uploaded</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((f, i) => (
-                <motion.tr key={f.fileId}
-                  variants={tableRow} initial="initial" animate="animate"
+                <motion.tr key={f.fileId} variants={tableRow} initial="initial" animate="animate"
                   transition={{ delay: i * 0.04 }}
                   onClick={() => setSelected(selected === f.fileId ? null : f.fileId)}
                   style={{ cursor: 'pointer', background: selected === f.fileId ? 'rgba(0,212,255,0.04)' : 'transparent' }}>
@@ -142,18 +195,43 @@ export default function Files({ onNavigate, walletAddress }) {
                   <td><span className="mono-text">{new Date(f.uploadedAt).toLocaleDateString()}</span></td>
                   <td><StatusBadge status={f.status} /></td>
                   <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-outline sm"
-                        onClick={e => { e.stopPropagation(); onNavigate('verify'); }}>
-                        Verify
-                      </button>
+                    <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+
+                      {/* Download Button */}
+                      <motion.button
+                        className="btn btn-outline sm"
+                        style={{ fontSize: 11, color: 'var(--accent)', borderColor: 'rgba(0,212,255,0.3)' }}
+                        whileHover={{ scale: 1.05, backgroundColor: 'rgba(0,212,255,0.08)' }}
+                        whileTap={{ scale: 0.95 }}
+                        disabled={downloading === f.fileId}
+                        onClick={() => handleDownload(f)}
+                        title="Download file info">
+                        {downloading === f.fileId ? '⏳' : '⬇️'} Download
+                      </motion.button>
+
+                      {/* Verify Button */}
+                      <motion.button
+                        className="btn btn-outline sm"
+                        style={{ fontSize: 11 }}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => onNavigate('verify')}>
+                        ◎ Verify
+                      </motion.button>
+
+                      {/* Revoke Button */}
                       {f.status !== 'revoked' && (
-                        <button className="btn btn-danger sm"
+                        <motion.button
+                          className="btn btn-danger sm"
+                          style={{ fontSize: 11 }}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
                           disabled={revoking === f.fileId}
-                          onClick={e => { e.stopPropagation(); handleRevoke(f.fileId); }}>
-                          {revoking === f.fileId ? '...' : 'Revoke'}
-                        </button>
+                          onClick={() => handleRevoke(f.fileId)}>
+                          {revoking === f.fileId ? '⏳' : '🚫'} Revoke
+                        </motion.button>
                       )}
+
                     </div>
                   </td>
                 </motion.tr>
@@ -179,16 +257,37 @@ export default function Files({ onNavigate, walletAddress }) {
                 { label: 'SHA-256 Hash', value: f.originalHash },
                 { label: 'TX Hash', value: f.txHash },
                 { label: 'File Size', value: formatSize(f.fileSize) },
-                { label: 'Status', value: f.status.toUpperCase() },
+                { label: 'Status', value: f.status?.toUpperCase() },
                 { label: 'Uploaded At', value: new Date(f.uploadedAt).toLocaleString() },
                 { label: 'Wallet Address', value: f.walletAddress },
                 { label: 'Encrypted URL', value: f.encryptedUrl || '—' },
               ].map((item, i) => (
                 <div key={i} className="file-detail-item">
                   <div className="file-detail-label">{item.label}</div>
-                  <div className="file-detail-value">{item.value}</div>
+                  <div className="file-detail-value" style={{ wordBreak: 'break-all' }}>{item.value}</div>
                 </div>
               ))}
+            </div>
+            {/* Quick Actions in Detail */}
+            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+              <motion.button className="btn btn-primary sm"
+                whileHover={{ scale: 1.02 }} onClick={() => handleDownload(f)}>
+                ⬇️ Download Info
+              </motion.button>
+              <motion.button className="btn btn-outline sm"
+                whileHover={{ scale: 1.02 }} onClick={() => onNavigate('verify')}>
+                ◎ Verify Integrity
+              </motion.button>
+              {f.txHash && f.txHash !== 'pending' && (
+                <motion.a
+                  href={getTxUrl(f.txHash)}
+                  target="_blank" rel="noreferrer"
+                  className="btn btn-outline sm"
+                  style={{ textDecoration: 'none' }}
+                  whileHover={{ scale: 1.02 }}>
+                  ⛓ View on Etherscan ↗
+                </motion.a>
+              )}
             </div>
           </motion.div>
         );

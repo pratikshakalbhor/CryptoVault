@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import '../styles/Dashboard.css';
 import StatusBadge from '../components/StatusBadge';
-import { pageVariants, staggerContainer, cardVariants, tableRow, fadeIn } from '../utils/animations';
+import { pageVariants, cardVariants, tableRow, fadeIn } from '../utils/animations';
 import { getAllFiles, getStats } from '../utils/api';
+import { getTxUrl } from '../utils/blockchain';
 
 export default function Dashboard({ onNavigate, walletAddress }) {
   const [files, setFiles] = useState([]);
@@ -12,16 +13,12 @@ export default function Dashboard({ onNavigate, walletAddress }) {
   const [error, setError] = useState('');
 
   const fetchData = useCallback(async () => {
-    if (!walletAddress) return;
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      // Parallel API calls
       const [filesRes, statsRes] = await Promise.all([
         getAllFiles(walletAddress),
         getStats(),
       ]);
-
       setFiles(filesRes.files || []);
       setStats(statsRes.stats || { total: 0, valid: 0, tampered: 0, revoked: 0 });
     } catch (err) {
@@ -31,19 +28,32 @@ export default function Dashboard({ onNavigate, walletAddress }) {
     }
   }, [walletAddress]);
 
-  // ── Data fetch karto ──
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (walletAddress) fetchData();
+  }, [fetchData, walletAddress]);
 
-  const statCards = [
-    { label: 'Total Files', value: stats.total, sub: 'Uploaded files', color: 'var(--accent)', cls: 'blue' },
-    { label: 'Valid', value: stats.valid, sub: 'Integrity intact', color: 'var(--green)', cls: 'green' },
-    { label: 'Tampered', value: stats.tampered, sub: '⚠️ Action needed', color: 'var(--red)', cls: 'red' },
-    { label: 'Revoked', value: stats.revoked, sub: 'Revoked files', color: '#a78bfa', cls: 'purple' },
-  ];
+  // ── Integrity Score calculate karto ──
+  const integrityScore = stats.total === 0
+    ? 100
+    : Math.round((stats.valid / stats.total) * 100);
 
-  // ── Loading State ──
+  const scoreColor = integrityScore === 100 ? 'var(--green)'
+    : integrityScore >= 80 ? 'var(--accent)'
+      : integrityScore >= 50 ? 'var(--yellow)'
+        : 'var(--red)';
+
+  const scoreLabel = integrityScore === 100 ? 'Perfect'
+    : integrityScore >= 80 ? 'Good'
+      : integrityScore >= 50 ? 'Warning'
+        : 'Critical';
+
+  const formatSize = (b) => {
+    if (!b) return '—';
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(2) + ' MB';
+  };
+
   if (loading) {
     return (
       <div className="page-container">
@@ -58,9 +68,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
         </div>
         <div className="section-card" style={{ padding: 48, textAlign: 'center' }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontSize: 13 }}>
-            Loading dashboard...
-          </div>
+          <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontSize: 13 }}>Loading dashboard...</div>
         </div>
       </div>
     );
@@ -69,7 +77,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
   return (
     <motion.div className="page-container" variants={pageVariants} initial="initial" animate="animate">
 
-      {/* Error Banner */}
+      {/* Error */}
       {error && (
         <motion.div variants={fadeIn} initial="initial" animate="animate"
           style={{ background: 'rgba(255,59,92,0.08)', border: '1px solid rgba(255,59,92,0.25)', borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -82,10 +90,18 @@ export default function Dashboard({ onNavigate, walletAddress }) {
         </motion.div>
       )}
 
-      {/* Stats */}
-      <motion.div className="stats-grid" variants={staggerContainer} initial="initial" animate="animate">
-        {statCards.map((s, i) => (
+      {/* Stats + Integrity Score */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 16 }}>
+
+        {/* Stats Cards */}
+        {[
+          { label: 'Total Files', value: stats.total, sub: 'Uploaded files', color: 'var(--accent)', cls: 'blue' },
+          { label: 'Valid', value: stats.valid, sub: 'Integrity intact', color: 'var(--green)', cls: 'green' },
+          { label: 'Tampered', value: stats.tampered, sub: '⚠️ Action needed', color: 'var(--red)', cls: 'red' },
+          { label: 'Revoked', value: stats.revoked, sub: 'Revoked files', color: '#a78bfa', cls: 'purple' },
+        ].map((s, i) => (
           <motion.div key={i} className={`stat-card ${s.cls}`} variants={cardVariants}
+            initial="initial" animate="animate"
             whileHover={{ y: -4, boxShadow: '0 12px 32px rgba(0,212,255,0.1)' }}>
             <div className="stat-label">{s.label}</div>
             <motion.div className="stat-value" style={{ color: s.color }}
@@ -96,7 +112,43 @@ export default function Dashboard({ onNavigate, walletAddress }) {
             <div className="stat-sub">{s.sub}</div>
           </motion.div>
         ))}
-      </motion.div>
+
+        {/* Integrity Score Card */}
+        <motion.div className="stat-card green" variants={cardVariants}
+          initial="initial" animate="animate"
+          whileHover={{ y: -4, boxShadow: `0 12px 32px ${scoreColor}22` }}
+          style={{ borderColor: `${scoreColor}44` }}>
+          <div className="stat-label">Integrity Score</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0' }}>
+            {/* Score Circle */}
+            <div style={{ position: 'relative', width: 56, height: 56, flexShrink: 0 }}>
+              <svg width="56" height="56" viewBox="0 0 56 56">
+                <circle cx="28" cy="28" r="22" fill="none" stroke="var(--border)" strokeWidth="4" />
+                <motion.circle cx="28" cy="28" r="22" fill="none"
+                  stroke={scoreColor} strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 22}`}
+                  initial={{ strokeDashoffset: 2 * Math.PI * 22 }}
+                  animate={{ strokeDashoffset: 2 * Math.PI * 22 * (1 - integrityScore / 100) }}
+                  transition={{ duration: 1, delay: 0.3, ease: 'easeOut' }}
+                  transform="rotate(-90 28 28)"
+                />
+              </svg>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: scoreColor }}>
+                {integrityScore}%
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: scoreColor }}>{scoreLabel}</div>
+              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                {stats.valid}/{stats.total} files valid
+              </div>
+            </div>
+          </div>
+          <div className="stat-sub">File integrity score</div>
+        </motion.div>
+
+      </div>
 
       {/* Quick Actions */}
       <motion.div className="quick-actions" variants={fadeIn} initial="initial" animate="animate">
@@ -120,7 +172,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
       {/* Recent Files */}
       <motion.div className="files-section" variants={cardVariants} initial="initial" animate="animate">
         <div className="files-header">
-          <span className="section-title">Recent Files</span>
+          <span className="section-title">Recent Activity</span>
           <motion.button className="btn btn-outline sm" whileHover={{ x: 3 }} onClick={() => onNavigate('files')}>
             View All →
           </motion.button>
@@ -159,7 +211,15 @@ export default function Dashboard({ onNavigate, walletAddress }) {
                   </td>
                   <td><span className="mono-text">{formatSize(f.fileSize)}</span></td>
                   <td><span className="hash-text">{f.originalHash?.substring(0, 16)}...</span></td>
-                  <td><span className="tx-link">{f.txHash?.substring(0, 14)}... ↗</span></td>
+                  <td>
+                    {f.txHash && f.txHash !== 'pending' ? (
+                      <a href={getTxUrl(f.txHash)} target="_blank" rel="noreferrer" className="tx-link" style={{ textDecoration: 'none' }}>
+                        {f.txHash.substring(0, 14)}... ↗
+                      </a>
+                    ) : (
+                      <span className="mono-text" style={{ opacity: 0.5 }}>Pending...</span>
+                    )}
+                  </td>
                   <td><span className="mono-text">{new Date(f.uploadedAt).toLocaleString()}</span></td>
                   <td><StatusBadge status={f.status} /></td>
                 </motion.tr>
@@ -187,12 +247,4 @@ export default function Dashboard({ onNavigate, walletAddress }) {
 
     </motion.div>
   );
-}
-
-// ── Helper ──
-function formatSize(bytes) {
-  if (!bytes) return '—';
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / 1048576).toFixed(2) + ' MB';
 }
