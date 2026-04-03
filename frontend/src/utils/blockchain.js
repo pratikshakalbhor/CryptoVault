@@ -7,6 +7,10 @@ import ABI from './abi.json';
 
 const CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS;
 
+// Debug: Verify if environment variables are loading correctly
+console.log('DEBUG: REACT_APP_CONTRACT_ADDRESS =', CONTRACT_ADDRESS);
+console.log('DEBUG: REACT_APP_API_URL =', process.env.REACT_APP_API_URL);
+
 // ── Provider + Signer get karto ──
 const getProviderAndSigner = async () => {
   if (!window.ethereum) {
@@ -20,6 +24,10 @@ const getProviderAndSigner = async () => {
 
 // ── Contract instance banvto ──
 const getContract = async (withSigner = true) => {
+  if (!CONTRACT_ADDRESS) {
+    throw new Error('CONTRACT_ADDRESS not set in .env file!');
+  }
+
   const { provider, signer } = await getProviderAndSigner();
   return new ethers.Contract(
     CONTRACT_ADDRESS,

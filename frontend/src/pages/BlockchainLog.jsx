@@ -1,32 +1,32 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import '../styles/BlockchainLog.css';
 import { pageVariants, cardVariants, staggerContainer, fadeIn } from '../utils/animations';
-import { getStatsFromBlockchain, getFileFromBlockchain, getTxUrl } from '../utils/blockchain';
+import { getStatsFromBlockchain, getFileFromBlockchain, getAddressUrl } from '../utils/blockchain';
 
 export default function BlockchainLog({ walletAddress }) {
   const [blockchainStats, setBlockchainStats] = useState(null);
-  const [loading,         setLoading]         = useState(true);
-  const [error,           setError]           = useState('');
-  const [fileIdInput,     setFileIdInput]      = useState('');
-  const [fileData,        setFileData]         = useState(null);
-  const [fetching,        setFetching]         = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [fileIdInput, setFileIdInput] = useState('');
+  const [fileData, setFileData] = useState(null);
+  const [fetching, setFetching] = useState(false);
 
-  useEffect(() => {
-    fetchBlockchainStats();
-  }, []);
-
-  const fetchBlockchainStats = async () => {
+  const fetchBlockchainStats = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const stats = await getStatsFromBlockchain();
-      setBlockchainStats(stats);
+      const result = await getStatsFromBlockchain();
+      setBlockchainStats(result);
     } catch (err) {
       setError('Blockchain connect error: ' + err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchBlockchainStats();
+  }, [fetchBlockchainStats]);
 
   const fetchFileFromChain = async () => {
     if (!fileIdInput.trim()) return;
@@ -42,10 +42,10 @@ export default function BlockchainLog({ walletAddress }) {
   };
 
   const stats = [
-    { label: 'Total Files Sealed', value: blockchainStats?.totalFiles ?? '—',          sub: 'On Sepolia',           color: 'var(--accent)', cls: 'blue'   },
-    { label: 'Total Verifications',value: blockchainStats?.totalVerifications ?? '—',  sub: 'verifyFile() calls',   color: 'var(--green)',  cls: 'green'  },
-    { label: 'Tamper Detected',     value: blockchainStats?.totalTampered ?? '—',       sub: 'Hash mismatches',      color: 'var(--red)',    cls: 'red'    },
-    { label: 'Total Revoked',       value: blockchainStats?.totalRevoked ?? '—',        sub: 'revokeFile() calls',   color: '#a78bfa',       cls: 'purple' },
+    { label: 'Total Files Sealed', value: blockchainStats?.totalFiles ?? '—', sub: 'On Sepolia', color: 'var(--accent)', cls: 'blue' },
+    { label: 'Total Verifications', value: blockchainStats?.totalVerifications ?? '—', sub: 'verifyFile() calls', color: 'var(--green)', cls: 'green' },
+    { label: 'Tamper Detected', value: blockchainStats?.totalTampered ?? '—', sub: 'Hash mismatches', color: 'var(--red)', cls: 'red' },
+    { label: 'Total Revoked', value: blockchainStats?.totalRevoked ?? '—', sub: 'revokeFile() calls', color: '#a78bfa', cls: 'purple' },
   ];
 
   return (
@@ -83,14 +83,14 @@ export default function BlockchainLog({ walletAddress }) {
         <div className="contract-info-grid">
           {[
             { label: 'Contract Address', value: process.env.REACT_APP_CONTRACT_ADDRESS || 'Not set in .env' },
-            { label: 'Network',          value: 'Ethereum Sepolia Testnet' },
-            { label: 'Compiler',         value: 'Solidity ^0.8.19' },
+            { label: 'Network', value: 'Ethereum Sepolia Testnet' },
+            { label: 'Compiler', value: 'Solidity ^0.8.19' },
           ].map((item, i) => (
             <div key={i} className="contract-info-item">
               <div className="contract-info-label">{item.label}</div>
               <div className="contract-info-value">
                 {i === 0 ? (
-                  <a href={`https://sepolia.etherscan.io/address/${item.value}`}
+                  <a href={getAddressUrl(item.value)}
                     target="_blank" rel="noreferrer"
                     style={{ color: 'var(--accent)', textDecoration: 'none' }}>
                     {item.value} ↗
@@ -131,12 +131,12 @@ export default function BlockchainLog({ walletAddress }) {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {[
-                { label: 'File ID',    value: fileData.fileId   },
-                { label: 'Filename',   value: fileData.filename  },
-                { label: 'Hash',       value: fileData.fileHash  },
-                { label: 'Owner',      value: fileData.owner     },
-                { label: 'Timestamp',  value: fileData.timestamp },
-                { label: 'Revoked',    value: fileData.isRevoked ? '⚠️ Yes' : '✅ No' },
+                { label: 'File ID', value: fileData.fileId },
+                { label: 'Filename', value: fileData.filename },
+                { label: 'Hash', value: fileData.fileHash },
+                { label: 'Owner', value: fileData.owner },
+                { label: 'Timestamp', value: fileData.timestamp },
+                { label: 'Revoked', value: fileData.isRevoked ? '⚠️ Yes' : '✅ No' },
               ].map((item, i) => (
                 <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 10 }}>
                   <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>{item.label}</div>
@@ -153,12 +153,12 @@ export default function BlockchainLog({ walletAddress }) {
         <div className="section-title" style={{ marginBottom: 16 }}>Contract Functions</div>
         <div className="tx-list">
           {[
-            { icon: '🔒', fn: 'sealFile()',    desc: 'File hash permanently store karto',   type: 'write', color: 'var(--accent)'  },
-            { icon: '✅', fn: 'verifyFile()',  desc: 'Hash compare + tamper detect karto',  type: 'write', color: 'var(--green)'   },
-            { icon: '👁️', fn: 'quickVerify()', desc: 'Read-only hash comparison (no gas)',  type: 'read',  color: 'var(--yellow)'  },
-            { icon: '🚫', fn: 'revokeFile()',  desc: 'File record revoke karto',            type: 'write', color: 'var(--red)'     },
-            { icon: '📊', fn: 'getStats()',    desc: 'Total files, verifications, tampered', type: 'read',  color: '#a78bfa'        },
-            { icon: '📄', fn: 'getFile()',     desc: 'Single file record fetch karto',      type: 'read',  color: 'var(--accent)'  },
+            { icon: '🔒', fn: 'sealFile()', desc: 'File hash permanently store karto', type: 'write', color: 'var(--accent)' },
+            { icon: '✅', fn: 'verifyFile()', desc: 'Hash compare + tamper detect karto', type: 'write', color: 'var(--green)' },
+            { icon: '👁️', fn: 'quickVerify()', desc: 'Read-only hash comparison (no gas)', type: 'read', color: 'var(--yellow)' },
+            { icon: '🚫', fn: 'revokeFile()', desc: 'File record revoke karto', type: 'write', color: 'var(--red)' },
+            { icon: '📊', fn: 'getStats()', desc: 'Total files, verifications, tampered', type: 'read', color: '#a78bfa' },
+            { icon: '📄', fn: 'getFile()', desc: 'Single file record fetch karto', type: 'read', color: 'var(--accent)' },
           ].map((item, i) => (
             <motion.div key={i} className="tx-item" whileHover={{ borderColor: item.color }}>
               <div style={{ width: 36, height: 36, borderRadius: 8, background: `${item.color}18`, border: `1px solid ${item.color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
