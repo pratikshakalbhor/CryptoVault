@@ -4,9 +4,27 @@ import '../styles/Login.css';
 import { scalePop, cardVariants, staggerContainer, fadeIn } from '../utils/animations';
 
 const WALLETS = [
-  { id: 'metamask',      name: 'MetaMask',       desc: 'Connect using browser extension', icon: '🦊', popular: true  },
-  { id: 'coinbase',      name: 'Coinbase Wallet', desc: 'Connect using Coinbase Wallet',   icon: '🔵', popular: false },
-  { id: 'walletconnect', name: 'WalletConnect',   desc: 'Scan QR with any wallet',         icon: '🔗', popular: false },
+  {
+    id: 'metamask',
+    name: 'MetaMask',
+    desc: 'Connect using browser extension',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
+    popular: true
+  },
+  {
+    id: 'coinbase',
+    name: 'Coinbase Wallet',
+    desc: 'Connect using Coinbase Wallet',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>,
+    popular: false
+  },
+  {
+    id: 'walletconnect',
+    name: 'WalletConnect',
+    desc: 'Scan QR with any wallet',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
+    popular: false
+  },
 ];
 
 export default function Login({ onConnected }) {
@@ -90,7 +108,9 @@ export default function Login({ onConnected }) {
 
         {/* Logo */}
         <motion.div className="login-logo" variants={fadeIn} initial="initial" animate="animate">
-          <motion.div className="login-logo-icon" whileHover={{ rotate:[0,-10,10,0], scale:1.1 }} transition={{ duration:0.4 }}>🔐</motion.div>
+          <motion.div className="login-logo-icon" whileHover={{ rotate:[0,-10,10,0], scale:1.1 }} transition={{ duration:0.4 }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </motion.div>
           <div>
             <div className="login-logo-text">CryptoVault</div>
             <div className="login-logo-sub">Integrity Verified</div>
@@ -121,7 +141,9 @@ export default function Login({ onConnected }) {
               <motion.div variants={fadeIn} initial="initial" animate="animate" transition={{ delay:0.4 }}>
                 <div className="login-divider"><div className="login-divider-line" /><span className="login-divider-text">Secured by</span><div className="login-divider-line" /></div>
                 <div className="security-info">
-                  <span className="security-info-icon">🛡️</span>
+                  <span className="security-info-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  </span>
                   <div className="security-info-text"><strong>Non-custodial</strong> — We never store your private keys. <strong>AES-256</strong> + <strong>Ethereum</strong> blockchain.</div>
                 </div>
               </motion.div>
@@ -133,7 +155,11 @@ export default function Login({ onConnected }) {
             <motion.div key="connecting" variants={scalePop} initial="initial" animate="animate" className="connecting-state">
               <motion.div animate={{ rotate:360 }} transition={{ duration:0.75, repeat:Infinity, ease:'linear' }}
                 style={{ width:48, height:48, border:'3px solid var(--border)', borderTopColor:'var(--accent)', borderRadius:'50%', margin:'0 auto 16px' }} />
-              <div className="connecting-name">{connectingWallet === 'MetaMask' ? '🦊' : '🔗'} {connectingWallet}</div>
+              <div className="connecting-name">
+                {connectingWallet === 'MetaMask'
+                  ? <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:7,verticalAlign:'middle'}}><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>MetaMask</>
+                  : <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:7,verticalAlign:'middle'}}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>{connectingWallet}</>}
+              </div>
               <div className="connecting-desc">Check your wallet for connection request...</div>
             </motion.div>
           )}
@@ -159,7 +185,10 @@ export default function Login({ onConnected }) {
                 ⚠️ {error}
               </motion.div>
               {error.includes('not installed') && (
-                <a href="https://metamask.io/download/" target="_blank" rel="noreferrer" className="btn btn-primary" style={{ width:'100%', justifyContent:'center', marginBottom:12, textDecoration:'none' }}>🦊 Install MetaMask</a>
+                <a href="https://metamask.io/download/" target="_blank" rel="noreferrer" className="btn btn-primary" style={{ width:'100%', justifyContent:'center', marginBottom:12, textDecoration:'none' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:7,verticalAlign:'middle'}}><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                Install MetaMask
+              </a>
               )}
               <motion.button className="btn btn-outline" style={{ width:'100%', justifyContent:'center' }} whileHover={{ scale:1.02 }} whileTap={{ scale:0.98 }} onClick={reset}>← Try Again</motion.button>
             </motion.div>

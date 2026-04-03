@@ -69,7 +69,10 @@ export default function BlockchainLog({ walletAddress }) {
       {error && (
         <motion.div variants={fadeIn} initial="initial" animate="animate"
           style={{ background: 'rgba(255,59,92,0.08)', border: '1px solid rgba(255,59,92,0.25)', borderRadius: 10, padding: '14px 18px', fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          ⚠️ {error}
+          <span style={{display:'inline-flex', alignItems:'center', gap:6}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            {error}
+          </span>
           <button className="btn btn-outline sm" onClick={fetchBlockchainStats}>Retry</button>
         </motion.div>
       )}
@@ -105,7 +108,10 @@ export default function BlockchainLog({ walletAddress }) {
       {/* Fetch File from Blockchain */}
       <motion.div className="section-card" variants={cardVariants} initial="initial" animate="animate">
         <div className="section-header">
-          <span className="section-title">🔍 Lookup File on Blockchain</span>
+          <span className="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:8,verticalAlign:'middle'}}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Lookup File on Blockchain
+          </span>
         </div>
         <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
           <input
@@ -118,7 +124,9 @@ export default function BlockchainLog({ walletAddress }) {
           />
           <motion.button className="btn btn-primary" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={fetchFileFromChain} disabled={fetching}>
-            {fetching ? '⏳ Fetching...' : '🔍 Lookup'}
+            {fetching
+              ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Fetching...</>
+              : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Lookup</>}
           </motion.button>
         </div>
 
@@ -126,8 +134,9 @@ export default function BlockchainLog({ walletAddress }) {
         {fileData && (
           <motion.div variants={fadeIn} initial="initial" animate="animate"
             style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-            <div style={{ fontWeight: 700, marginBottom: 12, color: 'var(--accent)' }}>
-              ✅ File Found on Blockchain
+            <div style={{ fontWeight: 700, marginBottom: 12, color: 'var(--accent)', display:'flex', alignItems:'center', gap:8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              File Found on Blockchain
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {[
@@ -136,7 +145,9 @@ export default function BlockchainLog({ walletAddress }) {
                 { label: 'Hash', value: fileData.fileHash },
                 { label: 'Owner', value: fileData.owner },
                 { label: 'Timestamp', value: fileData.timestamp },
-                { label: 'Revoked', value: fileData.isRevoked ? '⚠️ Yes' : '✅ No' },
+                { label: 'Revoked', value: fileData.isRevoked
+                  ? <span style={{color:'var(--red)', display:'inline-flex', alignItems:'center', gap:4}}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>Yes</span>
+                  : <span style={{color:'var(--green)', display:'inline-flex', alignItems:'center', gap:4}}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>No</span> },
               ].map((item, i) => (
                 <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 10 }}>
                   <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>{item.label}</div>
@@ -153,12 +164,12 @@ export default function BlockchainLog({ walletAddress }) {
         <div className="section-title" style={{ marginBottom: 16 }}>Contract Functions</div>
         <div className="tx-list">
           {[
-            { icon: '🔒', fn: 'sealFile()', desc: 'File hash permanently store karto', type: 'write', color: 'var(--accent)' },
-            { icon: '✅', fn: 'verifyFile()', desc: 'Hash compare + tamper detect karto', type: 'write', color: 'var(--green)' },
-            { icon: '👁️', fn: 'quickVerify()', desc: 'Read-only hash comparison (no gas)', type: 'read', color: 'var(--yellow)' },
-            { icon: '🚫', fn: 'revokeFile()', desc: 'File record revoke karto', type: 'write', color: 'var(--red)' },
-            { icon: '📊', fn: 'getStats()', desc: 'Total files, verifications, tampered', type: 'read', color: '#a78bfa' },
-            { icon: '📄', fn: 'getFile()', desc: 'Single file record fetch karto', type: 'read', color: 'var(--accent)' },
+            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>, fn: 'sealFile()', desc: 'Stores file hash permanently on-chain', type: 'write', color: 'var(--accent)' },
+            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>, fn: 'verifyFile()', desc: 'Hash compare + tamper detection', type: 'write', color: 'var(--green)' },
+            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>, fn: 'quickVerify()', desc: 'Read-only hash comparison (no gas)', type: 'read', color: 'var(--yellow)' },
+            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>, fn: 'revokeFile()', desc: 'Revokes a file record on-chain', type: 'write', color: 'var(--red)' },
+            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>, fn: 'getStats()', desc: 'Total files, verifications, tampered', type: 'read', color: '#a78bfa' },
+            { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>, fn: 'getFile()', desc: 'Fetch a single file record', type: 'read', color: 'var(--accent)' },
           ].map((item, i) => (
             <motion.div key={i} className="tx-item" whileHover={{ borderColor: item.color }}>
               <div style={{ width: 36, height: 36, borderRadius: 8, background: `${item.color}18`, border: `1px solid ${item.color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>

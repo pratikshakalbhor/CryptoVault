@@ -116,7 +116,9 @@ export default function Files({ onNavigate, walletAddress }) {
     return (
       <div className="page-container">
         <div style={{ textAlign: 'center', padding: 64 }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>⏳</div>
+          <div style={{ display:'flex', justifyContent:'center', marginBottom: 12 }}>
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          </div>
           <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontSize: 13 }}>Loading files...</div>
         </div>
       </div>
@@ -129,7 +131,9 @@ export default function Files({ onNavigate, walletAddress }) {
       {/* Controls */}
       <div className="files-controls">
         <div className="search-bar-wrapper">
-          <span className="search-icon">🔍</span>
+          <span className="search-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </span>
           <input className="search-input" type="text" placeholder="Search files..."
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
@@ -150,7 +154,10 @@ export default function Files({ onNavigate, walletAddress }) {
       {/* Error */}
       {error && (
         <div style={{ background: 'rgba(255,59,92,0.08)', border: '1px solid rgba(255,59,92,0.25)', borderRadius: 10, padding: '12px 16px', fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          ⚠️ {error}
+          <span style={{display:'inline-flex', alignItems:'center', gap:6}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            {error}
+          </span>
           <button className="btn btn-outline sm" onClick={fetchFiles}>Retry</button>
         </div>
       )}
@@ -163,10 +170,15 @@ export default function Files({ onNavigate, walletAddress }) {
 
         {filtered.length === 0 ? (
           <div className="empty-state">
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📁</div>
+            <div style={{ display:'flex', justifyContent:'center', marginBottom: 12 }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </div>
             <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--text)' }}>No files found</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Upload your first file</div>
-            <button className="btn btn-primary" onClick={() => onNavigate('upload')}>🔒 Upload & Seal</button>
+            <button className="btn btn-primary" onClick={() => onNavigate('upload')}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Upload &amp; Seal
+            </button>
           </div>
         ) : (
           <table className="table">
@@ -206,7 +218,10 @@ export default function Files({ onNavigate, walletAddress }) {
                         disabled={downloading === f.fileId}
                         onClick={() => handleDownload(f)}
                         title="Download file info">
-                        {downloading === f.fileId ? '⏳' : '⬇️'} Download
+                        {downloading === f.fileId
+                          ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                          : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        } Download
                       </motion.button>
 
                       {/* Verify Button */}
@@ -216,7 +231,8 @@ export default function Files({ onNavigate, walletAddress }) {
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={() => onNavigate('verify')}>
-                        ◎ Verify
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:4,verticalAlign:'middle'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                        Verify
                       </motion.button>
 
                       {/* Revoke Button */}
@@ -228,7 +244,10 @@ export default function Files({ onNavigate, walletAddress }) {
                           whileTap={{ scale: 0.95 }}
                           disabled={revoking === f.fileId}
                           onClick={() => handleRevoke(f.fileId)}>
-                          {revoking === f.fileId ? '⏳' : '🚫'} Revoke
+                          {revoking === f.fileId
+                            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                            : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                          } Revoke
                         </motion.button>
                       )}
 
@@ -248,7 +267,10 @@ export default function Files({ onNavigate, walletAddress }) {
         return (
           <motion.div className="section-card" variants={fadeIn} initial="initial" animate="animate">
             <div className="section-header">
-              <span className="section-title">📄 {f.filename}</span>
+              <span className="section-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:8,verticalAlign:'middle'}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                {f.filename}
+              </span>
               <button className="btn btn-outline sm" onClick={() => setSelected(null)}>✕</button>
             </div>
             <div className="file-detail-grid">
@@ -272,11 +294,13 @@ export default function Files({ onNavigate, walletAddress }) {
             <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
               <motion.button className="btn btn-primary sm"
                 whileHover={{ scale: 1.02 }} onClick={() => handleDownload(f)}>
-                ⬇️ Download Info
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Info
               </motion.button>
               <motion.button className="btn btn-outline sm"
                 whileHover={{ scale: 1.02 }} onClick={() => onNavigate('verify')}>
-                ◎ Verify Integrity
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                Verify Integrity
               </motion.button>
               {f.txHash && f.txHash !== 'pending' && (
                 <motion.a
@@ -285,7 +309,8 @@ export default function Files({ onNavigate, walletAddress }) {
                   className="btn btn-outline sm"
                   style={{ textDecoration: 'none' }}
                   whileHover={{ scale: 1.02 }}>
-                  ⛓ View on Etherscan ↗
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><rect x="2" y="7" width="6" height="6" rx="1"/><rect x="9" y="7" width="6" height="6" rx="1"/><rect x="16" y="7" width="6" height="6" rx="1"/><line x1="8" y1="10" x2="9" y2="10"/><line x1="15" y1="10" x2="16" y2="10"/></svg>
+                  View on Etherscan ↗
                 </motion.a>
               )}
             </div>

@@ -34,7 +34,9 @@ export default function Sidebar({ activePage, onNavigate, onLogout, walletAddres
 
       {/* Logo */}
       <motion.div className="logo" initial={{ opacity:0, y:-10 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.1 }}>
-        <motion.div className="logo-icon" whileHover={{ rotate:[0,-8,8,0], scale:1.05 }} transition={{ duration:0.4 }}>🔐</motion.div>
+        <motion.div className="logo-icon" whileHover={{ rotate:[0,-8,8,0], scale:1.05 }} transition={{ duration:0.4 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </motion.div>
         <div>
           <div className="logo-text">CryptoVault</div>
           <div className="logo-sub">Integrity Verified</div>
@@ -97,7 +99,9 @@ export default function Sidebar({ activePage, onNavigate, onLogout, walletAddres
 
         {/* Wallet Info */}
         <motion.div className="wallet-info" whileHover={{ borderColor:'var(--accent)' }}>
-          <div className="wallet-info-icon">🦊</div>
+          <div className="wallet-info-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          </div>
           <div className="wallet-info-details">
             <div className="wallet-info-label">Connected Wallet</div>
             <div className="wallet-info-address">{shortAddr}</div>

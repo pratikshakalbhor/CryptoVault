@@ -67,7 +67,9 @@ export default function Dashboard({ onNavigate, walletAddress }) {
           ))}
         </div>
         <div className="section-card" style={{ padding: 48, textAlign: 'center' }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+          <div style={{ marginBottom: 12, display:'flex', justifyContent:'center' }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          </div>
           <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontSize: 13 }}>Loading dashboard...</div>
         </div>
       </div>
@@ -81,7 +83,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
       {error && (
         <motion.div variants={fadeIn} initial="initial" animate="animate"
           style={{ background: 'rgba(255,59,92,0.08)', border: '1px solid rgba(255,59,92,0.25)', borderRadius: 12, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span>⚠️</span>
+          <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, color: 'var(--red)', fontSize: 13 }}>Backend Connection Error</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{error}</div>
@@ -97,7 +99,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
         {[
           { label: 'Total Files', value: stats.total, sub: 'Uploaded files', color: 'var(--accent)', cls: 'blue' },
           { label: 'Valid', value: stats.valid, sub: 'Integrity intact', color: 'var(--green)', cls: 'green' },
-          { label: 'Tampered', value: stats.tampered, sub: '⚠️ Action needed', color: 'var(--red)', cls: 'red' },
+          { label: 'Tampered', value: stats.tampered, sub: 'Action needed', color: 'var(--red)', cls: 'red' },
           { label: 'Revoked', value: stats.revoked, sub: 'Revoked files', color: '#a78bfa', cls: 'purple' },
         ].map((s, i) => (
           <motion.div key={i} className={`stat-card ${s.cls}`} variants={cardVariants}
@@ -153,9 +155,18 @@ export default function Dashboard({ onNavigate, walletAddress }) {
       {/* Quick Actions */}
       <motion.div className="quick-actions" variants={fadeIn} initial="initial" animate="animate">
         {[
-          { label: '🔒 Upload & Seal', page: 'upload', primary: true },
-          { label: '◎ Verify File', page: 'verify', primary: false },
-          { label: '⛓ Blockchain Log', page: 'blockchain', primary: false },
+          {
+            label: <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Upload &amp; Seal</>,
+            page: 'upload', primary: true
+          },
+          {
+            label: <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>Verify File</>,
+            page: 'verify', primary: false
+          },
+          {
+            label: <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><rect x="2" y="7" width="6" height="6" rx="1"/><rect x="9" y="7" width="6" height="6" rx="1"/><rect x="16" y="7" width="6" height="6" rx="1"/><line x1="8" y1="10" x2="9" y2="10"/><line x1="15" y1="10" x2="16" y2="10"/></svg>Blockchain Log</>,
+            page: 'blockchain', primary: false
+          },
         ].map((btn, i) => (
           <motion.button key={i}
             className={`btn ${btn.primary ? 'btn-primary' : 'btn-outline'}`}
@@ -181,12 +192,15 @@ export default function Dashboard({ onNavigate, walletAddress }) {
         {files.length === 0 ? (
           <motion.div variants={fadeIn} initial="initial" animate="animate"
             style={{ textAlign: 'center', padding: '48px 24px' }}>
-            <motion.div style={{ fontSize: 40, marginBottom: 12 }}
-              animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity }}>📂</motion.div>
+            <motion.div style={{ marginBottom: 12, display:'flex', justifyContent:'center' }}
+              animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </motion.div>
             <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--text)' }}>No files uploaded yet</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>Upload your first file to get started</div>
             <motion.button className="btn btn-primary" whileHover={{ scale: 1.04 }} onClick={() => onNavigate('upload')}>
-              🔒 Upload First File
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Upload First File
             </motion.button>
           </motion.div>
         ) : (
@@ -232,7 +246,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
       {/* Tamper Alert */}
       {stats.tampered > 0 && (
         <motion.div className="alert-banner" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <span>⚠️</span>
+          <span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
           <div>
             <div style={{ fontWeight: 700, marginBottom: 2 }}>
               {stats.tampered} Tampered File{stats.tampered > 1 ? 's' : ''} Detected!
