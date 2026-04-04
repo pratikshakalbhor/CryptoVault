@@ -77,7 +77,8 @@ export const verifyFile = async (file, fileId) => {
 // GET /api/files?wallet=0x...
 // ─────────────────────────────────────────
 export const getAllFiles = async (walletAddress) => {
-  return apiFetch(`/files?wallet=${walletAddress}`);
+  const query = walletAddress ? `?wallet=${walletAddress}` : '';
+  return apiFetch(`/files${query}`);
 };
 
 // ─────────────────────────────────────────
