@@ -1035,6 +1035,28 @@ export default function Files({ onNavigate, walletAddress }) {
                             Share
                           </button>
 
+                          {/* Shareable Link Button */}
+                          <button
+                            onClick={() => {
+                              const link = `${window.location.origin}/verify-public?fileId=${f.fileId}`;
+                              navigator.clipboard.writeText(link);
+                              alert('Verification link copied!');
+                            }}
+                            title="Copy verification link"
+                            style={{
+                              width: 28, height: 28, borderRadius: 6,
+                              border: '0.5px solid rgba(255,255,255,0.15)',
+                              background: 'transparent', color: '#888',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                            </svg>
+                          </button>
+
                           {/* Revoke */}
                           {f.status !== 'revoked' && (
                             <motion.button

@@ -12,6 +12,7 @@ import Files from './pages/Files';
 import BlockchainLog from './pages/BlockchainLog';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
+import PublicVerify from './pages/PublicVerify';
 import { notifVariants } from './utils/animations';
 
 const NAV_LABELS = {
@@ -49,6 +50,11 @@ export default function App() {
     setWalletAddress(null);
     setActivePage('dashboard');
   };
+
+  // Jar URL madhe /verify-public aahe tar seedha page dakhav
+  if (window.location.pathname === '/verify-public') {
+    return <PublicVerify />;
+  }
 
   // ── Not logged in ──
   if (!walletAddress) {

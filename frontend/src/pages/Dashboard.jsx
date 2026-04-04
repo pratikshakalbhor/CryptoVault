@@ -180,6 +180,95 @@ export default function Dashboard({ onNavigate, walletAddress }) {
         </motion.button>
       </motion.div>
 
+      {/* File Sharding Status Widget */}
+      <div style={{
+        background: 'var(--color-bg)',
+        border: '0.5px solid var(--color-border)',
+        borderRadius: 12, padding: '1.25rem',
+        marginBottom: '1.5rem',
+      }}>
+        <div style={{
+          fontSize: 11, fontWeight: 500, color: 'var(--text-muted)',
+          textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 14,
+        }}>
+          File Sharding Status
+        </div>
+
+        <div style={{
+          fontSize: 13, color: 'var(--text-muted)', marginBottom: 16,
+        }}>
+          Tumchya files{' '}
+          <span style={{ color: '#378ADD', fontWeight: 500 }}>5 IPFS nodes</span>
+          {' '}var distributed aahеt
+        </div>
+
+        {/* Node grid */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
+          gap: 8, marginBottom: 16,
+        }}>
+          {[
+            { id: 'Node 1', location: 'Mumbai',    status: 'active', ping: '12ms'  },
+            { id: 'Node 2', location: 'Frankfurt', status: 'active', ping: '48ms'  },
+            { id: 'Node 3', location: 'New York',  status: 'active', ping: '120ms' },
+            { id: 'Node 4', location: 'Singapore', status: 'active', ping: '67ms'  },
+            { id: 'Node 5', location: 'London',    status: 'syncing',ping: '55ms'  },
+          ].map((node, i) => (
+            <div key={i} style={{
+              background: node.status === 'active'
+                ? 'rgba(99,153,34,0.08)' : 'rgba(55,138,221,0.08)',
+              border: `0.5px solid ${node.status === 'active'
+                ? 'rgba(99,153,34,0.3)' : 'rgba(55,138,221,0.3)'}`,
+              borderRadius: 8, padding: '10px 8px', textAlign: 'center',
+            }}>
+              {/* Status dot */}
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: node.status === 'active' ? '#639922' : '#378ADD',
+                margin: '0 auto 6px',
+              }}/>
+              <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary,#fff)', marginBottom: 2 }}>
+                {node.id}
+              </div>
+              <div style={{ fontSize: 9, color: 'var(--text-muted,#888)', marginBottom: 4 }}>
+                {node.location}
+              </div>
+              <div style={{
+                fontSize: 9,
+                color: node.status === 'active' ? '#639922' : '#378ADD',
+              }}>
+                {node.ping}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ marginBottom: 8 }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between',
+            fontSize: 11, color: 'var(--text-muted,#888)', marginBottom: 6,
+          }}>
+            <span>Replication progress</span>
+            <span style={{ color: '#639922' }}>4/5 nodes synced</span>
+          </div>
+          <div style={{
+            height: 6, background: 'rgba(255,255,255,0.07)',
+            borderRadius: 20, overflow: 'hidden',
+          }}>
+            <div style={{
+              height: '100%', width: '80%',
+              background: '#639922', borderRadius: 20,
+              transition: 'width 0.5s ease',
+            }}/>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 11, color: '#555', marginTop: 8 }}>
+          Powered by IPFS / Pinata decentralized network
+        </div>
+      </div>
+
       {/* Recent Files */}
       <motion.div className="files-section" variants={cardVariants} initial="initial" animate="animate">
         <div className="files-header">
