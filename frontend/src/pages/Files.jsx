@@ -5,6 +5,7 @@ import StatusBadge from '../components/StatusBadge';
 import { pageVariants, cardVariants, tableRow, fadeIn } from '../utils/animations';
 import { getAllFiles, revokeFile, verifyFile } from '../utils/api';
 import { getTxUrl } from '../utils/blockchain';
+import ShareModal from '../components/ShareModal';
 
 // ── SVG helpers ───────────────────────────────────────
 const LockIcon = () => (
@@ -218,6 +219,7 @@ function QuickVerifyPanel({ file, onClose }) {
 // ── Main Files page ────────────────────────────────────
 export default function Files({ onNavigate, walletAddress }) {
   const [files,       setFiles]       = useState([]);
+  const [shareFile,   setShareFile]   = useState(null); // null = modal closed
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState('');
   const [filter,      setFilter]      = useState('all');
@@ -477,6 +479,20 @@ export default function Files({ onNavigate, walletAddress }) {
                             }
                           </motion.button>
 
+                          {/* Share */}
+                          <button
+                            onClick={() => setShareFile(f)}
+                            style={{
+                              padding:'5px 10px', fontSize:12,
+                              borderRadius:'var(--border-radius-md)',
+                              border:'0.5px solid var(--color-border-secondary)',
+                              background:'var(--color-background-secondary)',
+                              color:'var(--color-text-primary)', cursor:'pointer'
+                            }}
+                          >
+                            Share
+                          </button>
+
                           {/* Revoke */}
                           {f.status !== 'revoked' && (
                             <motion.button
@@ -569,6 +585,18 @@ export default function Files({ onNavigate, walletAddress }) {
           </motion.div>
         );
       })()}
+
+      {/* Share Modal */}
+      {shareFile && (
+        <ShareModal
+          file={shareFile}
+          onClose={() => setShareFile(null)}
+          onSuccess={(msg) => {
+            setShareFile(null);
+            alert(msg); // ya tumcha toast notification vaprto
+          }}
+        />
+      )}
 
     </motion.div>
   );
