@@ -692,6 +692,7 @@ export default function Files({ onNavigate, walletAddress }) {
                 <th>Size</th>
                 <th>Hash</th>
                 <th>Uploaded</th>
+                <th>Expiry Date</th>
                 <th>Status</th>
                 {/* ── NEW column ── */}
                 <th>Visibility</th>
@@ -702,6 +703,7 @@ export default function Files({ onNavigate, walletAddress }) {
               {filteredFiles.map((f, i) => {
                 const isShared = Array.isArray(f.sharedWith) && f.sharedWith.length > 0;
                 const isQVOpen = qvFileId === f.fileId;
+                const isExpired = f.expiryDate && new Date(f.expiryDate) < new Date();
 
                 return (
                   <React.Fragment key={f.fileId || i}>
@@ -731,7 +733,28 @@ export default function Files({ onNavigate, walletAddress }) {
                       <td><span className="mono-text">{formatSize(f.fileSize)}</span></td>
                       <td><span className="hash-text">{f.originalHash?.substring(0, 14)}…</span></td>
                       <td><span className="mono-text">{new Date(f.uploadedAt).toLocaleDateString()}</span></td>
-                      <td><StatusBadge status={f.status} /></td>
+                      <td>
+                        {f.expiryDate ? (
+                          <span style={{
+                            fontSize: 11,
+                            color: isExpired ? '#E24B4A' : 'var(--text-muted,#888)',
+                          }}>
+                            {new Date(f.expiryDate).toLocaleDateString('en-IN')}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#555' }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        {isExpired ? (
+                          <span style={{
+                            fontSize: 11, padding: '2px 8px', borderRadius: 20,
+                            background: '#FAEEDA', color: '#633806', fontWeight: 500,
+                          }}>Expired</span>
+                        ) : (
+                          <StatusBadge status={f.status} />
+                        )}
+                      </td>
 
                       {/* ── Visibility cell ── */}
                       <td onClick={e => e.stopPropagation()}>

@@ -28,6 +28,15 @@ func UploadFile(c *gin.Context) {
 		wallet = "unknown"
 	}
 
+	expiryDateStr := c.Request.FormValue("expiryDate")
+	var expiryDate *time.Time
+	if expiryDateStr != "" {
+		parsed, err := time.Parse("2006-01-02", expiryDateStr)
+		if err == nil {
+			expiryDate = &parsed
+		}
+	}
+
 	// Step 2 — SHA-256 hash generate karo
 	fileHash, err := utils.GenerateSHA256(file)
 	if err != nil {
@@ -55,6 +64,8 @@ func UploadFile(c *gin.Context) {
 		TxHash:        txHash,
 		Status:        "valid",
 		IsRevoked:     false,
+		ExpiryDate:    expiryDate,
+		IsExpired:     false,
 		UploadedAt:    time.Now(),
 	}
 

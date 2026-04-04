@@ -13,6 +13,8 @@ type FileRecord struct {
 	TxHash        string    `json:"txHash"        bson:"txHash"`
 	Status        string    `json:"status"        bson:"status"`
 	IsRevoked     bool      `json:"isRevoked"     bson:"isRevoked"`
+	ExpiryDate    *time.Time `json:"expiryDate"    bson:"expiryDate"`
+	IsExpired     bool       `json:"isExpired"      bson:"isExpired"`
 	UploadedAt    time.Time `json:"uploadedAt"    bson:"uploadedAt"`
 	VerifiedAt    *time.Time `json:"verifiedAt"   bson:"verifiedAt"`
 }
