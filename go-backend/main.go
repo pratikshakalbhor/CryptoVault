@@ -39,10 +39,8 @@ func main() {
 			"https://file-proof-a31dijo0g-pratikshakalbhors-projects.vercel.app": true,
 		}
 
-		if allowed[origin] || origin == "" {
+		if allowed[origin] {
 			c.Header("Access-Control-Allow-Origin", origin)
-		} else {
-			c.Header("Access-Control-Allow-Origin", "*")
 		}
 
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
