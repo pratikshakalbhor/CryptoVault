@@ -3,12 +3,12 @@ import { useState, useEffect } from 'react';
 const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 export default function PublicVerify() {
-  const [file, setFile]       = useState(null);
-  const [fileId, setFileId]   = useState('');
-  const [result, setResult]   = useState(null);
+  const [file, setFile] = useState(null);
+  const [fileId, setFileId] = useState('');
+  const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
-  const [drag, setDrag]       = useState(false);
+  const [error, setError] = useState('');
+  const [drag, setDrag] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -61,7 +61,7 @@ export default function PublicVerify() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0a0a0a',
+      background: 'var(--bg, #0a0a0a)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
@@ -84,8 +84,8 @@ export default function PublicVerify() {
           }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
               stroke="#378ADD" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              <polyline points="9 12 11 14 15 10"/>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <polyline points="9 12 11 14 15 10" />
             </svg>
           </div>
           <span style={{ fontSize: 22, fontWeight: 600, color: '#fff' }}>
@@ -106,8 +106,8 @@ export default function PublicVerify() {
       {/* Main card */}
       <div style={{
         width: '100%', maxWidth: 500,
-        background: '#141414',
-        border: '0.5px solid rgba(255,255,255,0.1)',
+        background: 'var(--surface, #141414)',
+        border: '1px solid var(--border, rgba(255,255,255,0.1))',
         borderRadius: 16, overflow: 'hidden',
       }}>
 
@@ -128,7 +128,7 @@ export default function PublicVerify() {
               onDragLeave={() => setDrag(false)}
               onClick={() => document.getElementById('pv-input').click()}
               style={{
-                border: `1.5px dashed ${drag ? '#378ADD' : file ? '#639922' : 'rgba(255,255,255,0.15)'}`,
+                border: `1.5px dashed ${drag ? 'var(--accent)' : file ? 'var(--green)' : 'var(--border)'}`,
                 borderRadius: 10,
                 padding: '24px 16px',
                 textAlign: 'center',
@@ -157,9 +157,9 @@ export default function PublicVerify() {
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
                     stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
                     style={{ marginBottom: 8 }}>
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
                   </svg>
                   <div style={{ fontSize: 13, color: '#888' }}>
                     Drag & drop ya click kara
@@ -184,7 +184,7 @@ export default function PublicVerify() {
               style={{
                 width: '100%', padding: '10px 14px',
                 borderRadius: 8, fontSize: 13,
-                border: '0.5px solid rgba(255,255,255,0.15)',
+                border: '1px solid var(--border)',
                 background: 'rgba(255,255,255,0.03)',
                 color: '#fff', outline: 'none',
                 fontFamily: 'monospace',
@@ -238,7 +238,7 @@ export default function PublicVerify() {
                   <span style={{
                     width: 5, height: 5, borderRadius: '50%',
                     background: '#378ADD', display: 'inline-block',
-                  }}/>
+                  }} />
                   {item.label}
                 </div>
               ))}
@@ -284,10 +284,10 @@ export default function PublicVerify() {
               marginBottom: 16,
             }}>
               {[
-                { label: 'Filename',  value: result.filename },
-                { label: 'File ID',   value: result.fileId },
-                { label: 'TX Hash',   value: result.txHash?.slice(0,24)+'...' },
-                { label: 'Verified',  value: new Date(result.verifiedAt).toLocaleString() },
+                { label: 'Filename', value: result.filename },
+                { label: 'File ID', value: result.fileId },
+                { label: 'TX Hash', value: result.txHash?.slice(0, 24) + '...' },
+                { label: 'Verified', value: new Date(result.verifiedAt).toLocaleString() },
               ].map((row, i) => (
                 <div key={i} style={{
                   display: 'flex', justifyContent: 'space-between',
