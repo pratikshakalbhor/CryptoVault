@@ -13,7 +13,9 @@ import BlockchainLog from './pages/BlockchainLog';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 import PublicVerify from './pages/PublicVerify';
+import AuditLog from './pages/AuditLog';
 import { notifVariants } from './utils/animations';
+import { NotificationProvider } from './context/NotificationContext';
 
 const NAV_LABELS = {
   dashboard: 'Dashboard',
@@ -22,19 +24,14 @@ const NAV_LABELS = {
   files: 'My Files',
   blockchain: 'Blockchain Log',
   profile: 'My Profile',
+  audit: 'Audit Trail',
 };
 
-const VALID_PAGES = ['dashboard', 'upload', 'verify', 'files', 'blockchain', 'profile'];
+const VALID_PAGES = ['dashboard', 'upload', 'verify', 'files', 'blockchain', 'profile', 'audit'];
 
 export default function App() {
   const [walletAddress, setWalletAddress] = useState(null);
   const [activePage, setActivePage] = useState('dashboard');
-  const [notification, setNotification] = useState(null);
-
-  const showNotif = (msg, type) => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 4000);
-  };
 
   const handleNavigate = (page) => {
     setActivePage(VALID_PAGES.includes(page) ? page : '404');
@@ -43,7 +40,6 @@ export default function App() {
   const handleConnected = (address) => {
     setWalletAddress(address);
     setActivePage('dashboard');
-    showNotif(' Wallet connected successfully!', 'success');
   };
 
   const handleLogout = () => {
@@ -53,21 +49,25 @@ export default function App() {
 
   // Jar URL madhe /verify-public aahe tar seedha page dakhav
   if (window.location.pathname === '/verify-public') {
-    return <PublicVerify />;
+    return (
+      <NotificationProvider>
+        <PublicVerify />
+      </NotificationProvider>
+    );
   }
 
   // ── Not logged in ──
   if (!walletAddress) {
     return (
-      <>
+      <NotificationProvider>
         <div className="grid-bg" />
         <Login onConnected={handleConnected} />
-      </>
+      </NotificationProvider>
     );
   }
 
   return (
-    <>
+    <NotificationProvider>
       <div className="grid-bg" />
       <div className="noise" />
 
@@ -93,12 +93,13 @@ export default function App() {
                 {activePage === 'dashboard' &&
                   <Dashboard onNavigate={handleNavigate} walletAddress={walletAddress} />}
                 {activePage === 'upload' &&
-                  <Upload onNotify={showNotif} walletAddress={walletAddress} />}
+                  <Upload walletAddress={walletAddress} />}
                 {activePage === 'verify' &&
-                  <Verify onNotify={showNotif} walletAddress={walletAddress} />}
+                  <Verify walletAddress={walletAddress} />}
                 {activePage === 'files' &&
                   <Files onNavigate={handleNavigate} walletAddress={walletAddress} />}
                 {activePage === 'blockchain' && <BlockchainLog />}
+                {activePage === 'audit' && <AuditLog walletAddress={walletAddress} />}
                 {activePage === 'profile' && <Profile walletAddress={walletAddress} onNavigate={handleNavigate} />}
                 {activePage === '404' && <NotFound onNavigate={handleNavigate} />}
               </motion.div>
@@ -106,21 +107,6 @@ export default function App() {
           </div>
         </main>
       </div>
-
-      {/* Animated Notification */}
-      <AnimatePresence>
-        {notification && (
-          <motion.div
-            className={`notification ${notification.type}`}
-            variants={notifVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-          >
-            {notification.msg}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+    </NotificationProvider>
   );
 }
