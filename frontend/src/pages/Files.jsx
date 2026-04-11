@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import '../styles/Files.css';
@@ -608,7 +609,6 @@ export default function Files({ onNavigate, walletAddress }) {
   const [revoking, setRevoking] = useState('');
   const [downloading, setDownloading] = useState('');
   const [qvFileId, setQvFileId] = useState(null);  // quick-verify panel fileId
-  const { addNotification } = useNotification();
 
 
   const fetchVersions = async (file) => {
