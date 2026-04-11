@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import '../styles/Files.css';
 import StatusBadge from '../components/StatusBadge';
 import { pageVariants, cardVariants, tableRow, fadeIn } from '../utils/animations';
-import { getAllFiles, revokeFile, verifyFile, getFileVersions, downloadCertificate } from '../utils/api';
+import { getAllFiles, revokeFile, verifyFile, getFileVersions } from '../utils/api';
 import { getTxUrl } from '../utils/blockchain';
 import { generateCertificate } from '../utils/certificate';
 import ShareModal from '../components/ShareModal';
@@ -44,14 +44,6 @@ const ShieldIcon = () => (
   </svg>
 );
 
-const CertIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-    <path d="m9 15 2 2 4-4" />
-  </svg>
-);
 
 // ── Visibility Badge ───────────────────────────────────
 function VisibilityBadge({ isShared }) {
@@ -618,14 +610,6 @@ export default function Files({ onNavigate, walletAddress }) {
   const [qvFileId, setQvFileId] = useState(null);  // quick-verify panel fileId
   const { addNotification } = useNotification();
 
-  const handleGetCertificate = async (fileId) => {
-    try {
-      await downloadCertificate(fileId);
-      addNotification('Certificate generated successfully!', 'success');
-    } catch (err) {
-      addNotification(err.message, 'error');
-    }
-  };
 
   const fetchVersions = async (file) => {
     setVersionFile(file);

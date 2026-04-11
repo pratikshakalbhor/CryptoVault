@@ -109,8 +109,7 @@ export const generateCertificate = (file) => {
   // Verification URL
   y = section('Public Verification', y);
   const verifyUrl = `${window.location.origin}/verify-public?fileId=${file.fileId}`;
-  y = row('Verify URL', verifyUrl, y, [0, 212, 255]);
-  y += 8;
+  row('Verify URL', verifyUrl, y, [0, 212, 255]);
 
   // Footer
   doc.setDrawColor(0, 212, 255, 0.2);
