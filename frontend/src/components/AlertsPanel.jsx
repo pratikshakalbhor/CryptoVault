@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAllFiles, getStats } from '../utils/api';
 
@@ -140,7 +140,7 @@ export default function AlertsPanel({ walletAddress, onNavigate }) {
   const [loading, setLoading]     = useState(true);
   const [filter, setFilter]       = useState('all');
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     setLoading(true);
     try {
       const [filesRes, statsRes] = await Promise.all([
@@ -157,11 +157,11 @@ export default function AlertsPanel({ walletAddress, onNavigate }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [walletAddress]);
 
   useEffect(() => {
     if (walletAddress) fetchAlerts();
-  }, [walletAddress]);
+  }, [walletAddress, fetchAlerts]);
 
   const dismiss = (id) => setDismissed(prev => [...prev, id]);
   const dismissAll = () => setDismissed(alerts.map(a => a.id));
