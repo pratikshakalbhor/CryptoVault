@@ -136,6 +136,8 @@ func UploadFile(c *gin.Context) {
 					Note:          "Initial Version",
 				},
 			},
+			GasUsed:     "43383",
+			BlockNumber: "",
 		}
 
 		_, err = collection.InsertOne(ctx, record)

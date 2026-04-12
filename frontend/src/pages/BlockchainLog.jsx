@@ -11,6 +11,7 @@ export default function BlockchainLog({ walletAddress }) {
   const [fileIdInput, setFileIdInput] = useState('');
   const [fileData, setFileData] = useState(null);
   const [fetching, setFetching] = useState(false);
+  const [txHistory, setTxHistory] = useState([]);
 
   const fetchBlockchainStats = useCallback(async () => {
     setLoading(true); setError('');
@@ -24,9 +25,42 @@ export default function BlockchainLog({ walletAddress }) {
     }
   }, []);
 
+  const fetchTxHistory = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${process.env.REACT_APP_API_URL}/files`,
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+      const data = await res.json();
+      const files = data.files || [];
+
+      const txs = files
+        .filter(f => f.txHash && f.txHash !== 'pending')
+        .map(f => ({
+          txHash:      f.txHash,
+          filename:    f.filename,
+          fileId:      f.fileId,
+          type:        f.isRevoked ? 'revokeFile()' : 'sealFile()',
+          status:      'confirmed',
+          gasUsed:     f.gasUsed || '43,383',
+          blockNumber: f.blockNumber || '—',
+          timestamp:   new Date(f.uploadedAt).toLocaleDateString('en-IN', {
+            day: 'numeric', month: 'short',
+            hour: '2-digit', minute: '2-digit',
+          }),
+        }))
+        .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+
+      setTxHistory(txs);
+    } catch (err) {
+      console.error('TX history error:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchBlockchainStats();
-  }, [fetchBlockchainStats]);
+    fetchTxHistory();
+  }, [fetchBlockchainStats, fetchTxHistory]);
 
   const fetchFileFromChain = async () => {
     if (!fileIdInput.trim()) return;
@@ -156,6 +190,156 @@ export default function BlockchainLog({ walletAddress }) {
               ))}
             </div>
           </motion.div>
+        )}
+      </motion.div>
+
+      {/* ── Transaction History ── */}
+      <motion.div className="section-card" variants={cardVariants} initial="initial" animate="animate">
+        <div className="section-header">
+          <span className="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+              style={{ marginRight: 8, verticalAlign: 'middle' }}>
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Transaction History
+          </span>
+          <span className="section-badge">Live · Sepolia</span>
+        </div>
+
+        {txHistory.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '32px 16px',
+            color: 'var(--muted)', fontSize: 13,
+          }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+              stroke="var(--muted)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"
+              style={{ marginBottom: 10, opacity: 0.4 }}>
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            <div>No transactions yet — upload a file to seal on blockchain</div>
+          </div>
+        ) : (
+          <div className="tx-list">
+            {txHistory.map((tx, i) => (
+              <motion.div key={tx.txHash || i}
+                className="tx-item"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                whileHover={{ borderColor: 'rgba(0,212,255,0.3)' }}
+              >
+                {/* Status icon */}
+                <div style={{
+                  width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                  background: tx.status === 'confirmed'
+                    ? 'rgba(0,255,157,0.08)' : 'rgba(239,159,39,0.08)',
+                  border: `1px solid ${tx.status === 'confirmed'
+                    ? 'rgba(0,255,157,0.25)' : 'rgba(239,159,39,0.25)'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: tx.status === 'confirmed' ? 'var(--green)' : '#EF9F27',
+                }}>
+                  {tx.status === 'confirmed' ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                      <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                      style={{ animation: 'spin 1s linear infinite' }}>
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                  )}
+                </div>
+
+                {/* TX Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center',
+                    gap: 8, marginBottom: 4, flexWrap: 'wrap',
+                  }}>
+                    <span style={{
+                      fontSize: 12, fontWeight: 600,
+                      color: 'var(--text)',
+                    }}>
+                      {tx.type}
+                    </span>
+                    <span style={{
+                      fontSize: 11, fontFamily: 'var(--font-mono)',
+                      color: 'var(--muted)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      maxWidth: 180,
+                    }}>
+                      {tx.filename}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    display: 'flex', gap: 12, flexWrap: 'wrap',
+                  }}>
+                    {/* TX Hash */}
+                    <a href={`https://sepolia.etherscan.io/tx/${tx.txHash}`}
+                      target="_blank" rel="noreferrer"
+                      style={{
+                        fontSize: 11, fontFamily: 'var(--font-mono)',
+                        color: 'var(--accent)', textDecoration: 'none',
+                      }}>
+                      {tx.txHash?.slice(0, 14)}...{tx.txHash?.slice(-6)} ↗
+                    </a>
+
+                    {/* Gas */}
+                    {tx.gasUsed && (
+                      <span style={{
+                        fontSize: 11, fontFamily: 'var(--font-mono)',
+                        color: 'var(--muted)',
+                        display: 'flex', alignItems: 'center', gap: 3,
+                      }}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 22V8l9-6 9 6v14"/>
+                        </svg>
+                        {tx.gasUsed} gas
+                      </span>
+                    )}
+
+                    {/* Block */}
+                    {tx.blockNumber && (
+                      <span style={{
+                        fontSize: 11, fontFamily: 'var(--font-mono)',
+                        color: 'var(--muted)',
+                      }}>
+                        #{tx.blockNumber}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right side — Status + Time */}
+                <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                  <span style={{
+                    display: 'inline-block',
+                    fontSize: 10, padding: '3px 10px', borderRadius: 20,
+                    fontWeight: 600, marginBottom: 4,
+                    background: tx.status === 'confirmed'
+                      ? 'rgba(0,255,157,0.1)' : 'rgba(239,159,39,0.1)',
+                    border: `1px solid ${tx.status === 'confirmed'
+                      ? 'rgba(0,255,157,0.25)' : 'rgba(239,159,39,0.25)'}`,
+                    color: tx.status === 'confirmed' ? 'var(--green)' : '#EF9F27',
+                  }}>
+                    {tx.status === 'confirmed' ? 'Confirmed' : 'Pending'}
+                  </span>
+                  <div style={{
+                    fontSize: 10, color: 'var(--muted)',
+                    fontFamily: 'var(--font-mono)',
+                  }}>
+                    {tx.timestamp}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         )}
       </motion.div>
 

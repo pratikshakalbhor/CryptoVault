@@ -31,6 +31,8 @@ type FileRecord struct {
 	Versions      []VersionRecord `json:"versions"      bson:"versions"` // Audit Trail sathi
 	Visibility    string          `json:"visibility"    bson:"visibility"`    // private, public, shared
 	SharedWith    []string        `json:"sharedWith"    bson:"sharedWith"`    // wallet addresses
+	GasUsed       string          `json:"gasUsed"       bson:"gasUsed"`
+	BlockNumber   string          `json:"blockNumber"   bson:"blockNumber"`
 }
 
 // Stats — Dashboard sathi
