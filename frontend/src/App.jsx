@@ -14,6 +14,7 @@ import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 import PublicVerify from './pages/PublicVerify';
 import AuditLog from './pages/AuditLog';
+import AlertsPanel from './components/AlertsPanel';
 import { NotificationProvider } from './context/NotificationContext';
 
 const NAV_LABELS = {
@@ -24,9 +25,10 @@ const NAV_LABELS = {
   blockchain: 'Blockchain Log',
   profile: 'My Profile',
   audit: 'Audit Trail',
+  alerts: 'Alerts',
 };
 
-const VALID_PAGES = ['dashboard', 'upload', 'verify', 'files', 'blockchain', 'profile', 'audit'];
+const VALID_PAGES = ['dashboard', 'upload', 'verify', 'files', 'blockchain', 'profile', 'audit', 'alerts'];
 
 export default function App() {
   const [walletAddress, setWalletAddress] = useState(null);
@@ -97,6 +99,7 @@ export default function App() {
                   <Files onNavigate={handleNavigate} walletAddress={walletAddress} />}
                 {activePage === 'blockchain' && <BlockchainLog />}
                 {activePage === 'audit' && <AuditLog walletAddress={walletAddress} />}
+                {activePage === 'alerts' && <AlertsPanel walletAddress={walletAddress} onNavigate={handleNavigate} />}
                 {activePage === 'profile' && <Profile walletAddress={walletAddress} onNavigate={handleNavigate} />}
                 {activePage === '404' && <NotFound onNavigate={handleNavigate} />}
               </motion.div>
