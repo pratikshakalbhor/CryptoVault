@@ -14,7 +14,8 @@ import (
 )
 
 func VerifyFile(c *gin.Context) {
-	// Step 1 — File aani FileID receive karo
+
+	// Step 1 — File receive karo
 	file, _, err := c.Request.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File nahi mila"})
@@ -22,67 +23,70 @@ func VerifyFile(c *gin.Context) {
 	}
 	defer file.Close()
 
-	fileID := c.Request.FormValue("fileId")
-	if fileID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "File ID required"})
-		return
-	}
-
-	// Step 2 — MongoDB madhe original record fetch karo
-	collection := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var record models.FileRecord
-	err = collection.FindOne(ctx, bson.M{"fileId": fileID}).Decode(&record)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File record nahi mila"})
-		return
-	}
-
-	if record.IsRevoked {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "He file revoke zali aahe"})
-		return
-	}
-
-	// Step 3 — Current hash generate karo
-	currentHash, err := utils.GenerateSHA256(file)
+	// Step 2 — New hash generate karo
+	newHash, err := utils.GenerateSHA256(file)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Hash generate error"})
 		return
 	}
 
-	// Step 4 — Compare karo
-	isMatch := currentHash == record.OriginalHash
-	status := "valid"
-	message := "File is VALID "
+	// Step 3 — MongoDB madhe hash search karo — FileID nahi lagat!
+	collection := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	if !isMatch {
-		status = "tampered"
-		message = "TAMPER DETECTED "
+	var record models.FileRecord
+	err = collection.FindOne(ctx, bson.M{"originalHash": newHash}).Decode(&record)
+
+	if err != nil {
+		// Hash nahi mila = TAMPERED
+		c.JSON(http.StatusOK, gin.H{
+			"success":     true,
+			"status":      "tampered",
+			"isMatch":     false,
+			"message":     "⚠️ TAMPER DETECTED — No matching hash found in registry",
+			"currentHash": newHash,
+			"originalHash": "",
+		})
+		return
 	}
 
-	// Step 5 — MongoDB status update karo
+	// Revoked check
+	if record.IsRevoked {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"status":  "revoked",
+			"isMatch": false,
+			"message": "This file has been revoked",
+			"fileId":  record.FileID,
+		})
+		return
+	}
+
+	// Step 4 — Hash mila = VALID
 	now := time.Now()
+
+	// MongoDB status update karo
 	collection.UpdateOne(ctx,
-		bson.M{"fileId": fileID},
+		bson.M{"originalHash": newHash},
 		bson.M{"$set": bson.M{
-			"status":     status,
+			"status":     "valid",
 			"verifiedAt": now,
 		}},
 	)
 
-	// Step 6 — Response
 	c.JSON(http.StatusOK, gin.H{
 		"success":      true,
-		"fileId":       fileID,
+		"status":       "valid",
+		"isMatch":      true,
+		"message":      "✅ File is VALID — Integrity verified",
+		"fileId":       record.FileID,
 		"filename":     record.Filename,
-		"isMatch":      isMatch,
-		"status":       status,
 		"originalHash": record.OriginalHash,
-		"currentHash":  currentHash,
+		"currentHash":  newHash,
 		"txHash":       record.TxHash,
+		"walletAddress": record.WalletAddress,
+		"uploadedAt":   record.UploadedAt,
 		"verifiedAt":   now.Format(time.RFC3339),
-		"message":      message,
 	})
 }

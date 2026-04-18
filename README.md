@@ -67,7 +67,7 @@ Mismatch → ⚠️ TAMPERED — File has been modified or corrupted
          ↓
 🖥️  React Frontend (JSX + Framer Motion)
          ↓                        ↓
-⚙️  Go Backend (Gin)         ⛓️  Ethereum Smart Contract
+⚙️  Go Backend (Gin)         ⛓️  FileRegistry Smart Contract
          ↓                        ↓
 🍃  MongoDB Atlas            📜  CryptoVault.sol (Sepolia)
 ☁️  Cloudinary
@@ -139,7 +139,7 @@ ChainLock/
 │       └── hash_test.go             Unit tests
 │
 └── 📁 contracts/                    Solidity Smart Contract
-    ├── CryptoVault.sol              Main contract
+    ├── FileRegistry.sol             Main contract
     └── abi.json                     Contract ABI
 ```
 

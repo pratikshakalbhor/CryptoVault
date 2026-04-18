@@ -1,5 +1,18 @@
 [
   {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "fileHash",
+        "type": "string"
+      }
+    ],
+    "name": "registerFile",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "stateMutability": "nonpayable",
     "type": "constructor"
@@ -477,12 +490,7 @@
     "inputs": [
       {
         "internalType": "string",
-        "name": "_fileId",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "_currentHash",
+        "name": "fileHash",
         "type": "string"
       }
     ],
@@ -490,11 +498,21 @@
     "outputs": [
       {
         "internalType": "bool",
-        "name": "isMatch",
+        "name": "valid",
         "type": "bool"
+      },
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
       }
     ],
-    "stateMutability": "nonpayable",
+    "stateMutability": "view",
     "type": "function"
   }
 ]

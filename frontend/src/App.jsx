@@ -1,112 +1,54 @@
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import './styles/global.css';
+import './index.css';
 
-import Login from './pages/Login';
-import Sidebar from './components/Sidebar';
-import Topbar from './components/Topbar';
-import Dashboard from './pages/Dashboard';
-import Upload from './pages/Upload';
-import Verify from './pages/Verify';
-import Files from './pages/Files';
+import Sidebar      from './components/Sidebar';
+import Topbar       from './components/Topbar';
+import Dashboard    from './pages/Dashboard';
+import Upload       from './pages/Upload';
+import Verify       from './pages/Verify';
+import MyFiles      from './pages/MyFiles';
 import BlockchainLog from './pages/BlockchainLog';
-import Profile from './pages/Profile';
-import NotFound from './pages/NotFound';
-import PublicVerify from './pages/PublicVerify';
-import AuditLog from './pages/AuditLog';
-import AlertsPanel from './components/AlertsPanel';
-import { NotificationProvider } from './context/NotificationContext';
+import FileDetails  from './pages/FileDetails';
 
-const NAV_LABELS = {
-  dashboard: 'Dashboard',
-  upload: 'Upload & Seal',
-  verify: 'Verify File',
-  files: 'My Files',
-  blockchain: 'Blockchain Log',
-  profile: 'My Profile',
-  audit: 'Audit Trail',
-  alerts: 'Alerts',
-};
-
-const VALID_PAGES = ['dashboard', 'upload', 'verify', 'files', 'blockchain', 'profile', 'audit', 'alerts'];
+const WALLET = '0xf34a8b2c9e1d7f4a0b3c6e9d2f5a8c1e4b7d0f3';
 
 export default function App() {
-  const [walletAddress, setWalletAddress] = useState(null);
-  const [activePage, setActivePage] = useState('dashboard');
+  const [activePage, setActivePage]     = useState('dashboard');
+  const [selectedFile, setSelectedFile] = useState(null);
 
-  const handleNavigate = (page) => {
-    setActivePage(VALID_PAGES.includes(page) ? page : '404');
+  const handleNavigate = (page, fileData) => {
+    setActivePage(page);
+    if (fileData) setSelectedFile(fileData);
   };
 
-  const handleConnected = (address) => {
-    setWalletAddress(address);
-    setActivePage('dashboard');
+  const renderPage = () => {
+    switch (activePage) {
+      case 'dashboard':
+        return <Dashboard onNavigate={handleNavigate} walletAddress={WALLET} />;
+      case 'upload':
+        return <Upload walletAddress={WALLET} onNavigate={handleNavigate} />;
+      case 'verify':
+        return <Verify walletAddress={WALLET} />;
+      case 'my-files':
+        return <MyFiles onNavigate={handleNavigate} walletAddress={WALLET} />;
+      case 'blockchain-log':
+        return <BlockchainLog />;
+      case 'file-details':
+        return <FileDetails file={selectedFile} onNavigate={handleNavigate} />;
+      default:
+        return <Dashboard onNavigate={handleNavigate} walletAddress={WALLET} />;
+    }
   };
-
-  const handleLogout = () => {
-    setWalletAddress(null);
-    setActivePage('dashboard');
-  };
-
-  // Jar URL madhe /verify-public aahe tar seedha page dakhav
-  if (window.location.pathname === '/verify-public') {
-    return (
-      <NotificationProvider>
-        <PublicVerify />
-      </NotificationProvider>
-    );
-  }
-
-  // ── Not logged in ──
-  if (!walletAddress) {
-    return (
-      <NotificationProvider>
-        <Login onConnected={handleConnected} />
-      </NotificationProvider>
-    );
-  }
 
   return (
-    <NotificationProvider>
-      <div className="noise" />
-
-      <div className="app">
-        <Sidebar
-          activePage={activePage}
-          onNavigate={handleNavigate}
-          onLogout={handleLogout}
-          walletAddress={walletAddress}
-        />
-
-        <main className="main">
-          <Topbar
-            pageTitle={NAV_LABELS[activePage] || 'Not Found'}
-            walletAddress={walletAddress}
-            onDisconnect={handleLogout}
-          />
-
-          {/* Page transition */}
-          <div className="content">
-            <AnimatePresence mode="wait">
-              <motion.div key={activePage} style={{ height: '100%' }}>
-                {activePage === 'dashboard' &&
-                  <Dashboard onNavigate={handleNavigate} walletAddress={walletAddress} />}
-                {activePage === 'upload' &&
-                  <Upload walletAddress={walletAddress} />}
-                {activePage === 'verify' &&
-                  <Verify walletAddress={walletAddress} />}
-                {activePage === 'files' &&
-                  <Files onNavigate={handleNavigate} walletAddress={walletAddress} />}
-                {activePage === 'blockchain' && <BlockchainLog />}
-                {activePage === 'audit' && <AuditLog walletAddress={walletAddress} />}
-                {activePage === 'alerts' && <AlertsPanel walletAddress={walletAddress} onNavigate={handleNavigate} />}
-                {activePage === 'profile' && <Profile walletAddress={walletAddress} onNavigate={handleNavigate} />}
-                {activePage === '404' && <NotFound onNavigate={handleNavigate} />}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </main>
+    <div className="app">
+      <Sidebar activePage={activePage} onNavigate={handleNavigate} />
+      <div className="main">
+        <Topbar walletAddress={WALLET} />
+        <div className="page">
+          {renderPage()}
+        </div>
       </div>
-    </NotificationProvider>
+    </div>
   );
 }

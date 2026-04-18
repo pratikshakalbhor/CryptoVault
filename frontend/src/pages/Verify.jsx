@@ -1,263 +1,190 @@
-import { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import '../styles/Verify.css';
-import { pageVariants, cardVariants, scalePop } from '../utils/animations';
-import { verifyFile, getAllFiles } from '../utils/api';
+import { useState } from 'react';
+import { verifyFile } from '../utils/api';
 
-export default function Verify({ onNotify, walletAddress }) {
-  const [verifyFile_, setVerifyFile] = useState(null);
-  const [fileId, setFileId] = useState('');
-  const [verifying, setVerifying] = useState(false);
+export default function Verify({ walletAddress }) {
+  const [file, setFile]     = useState(null);
+  const [drag, setDrag]     = useState(false);
+  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [verifyStep, setVerifyStep] = useState(0);
-  const [files, setFiles] = useState([]);
-  const [loadingFiles, setLoadingFiles] = useState(false);
-  const verifyInputRef = useRef(null);
+  const [error, setError]   = useState('');
 
-  const VERIFY_STEPS = [
-    'Reading file bytes...',
-    'Generating SHA-256 hash...',
-    'Fetching original hash from MongoDB...',
-    'Comparing hashes...',
-  ];
-
-  // Files dropdown load karto
-  const loadFiles = async () => {
-    if (!walletAddress || files.length > 0) return;
-    setLoadingFiles(true);
-    try {
-      const res = await getAllFiles(walletAddress);
-      setFiles(res.files || []);
-    } catch (err) {
-      onNotify('Failed to load files: ' + err.message, 'error');
-    } finally {
-      setLoadingFiles(false);
-    }
+  const handleDrop = e => {
+    e.preventDefault(); setDrag(false);
+    const f = e.dataTransfer.files[0];
+    if (f) { setFile(f); setResult(null); setError(''); }
+  };
+  const handleSelect = e => {
+    const f = e.target.files[0];
+    if (f) { setFile(f); setResult(null); setError(''); }
   };
 
-  const handleVerify = async () => {
-    if (!verifyFile_ || !fileId) return;
-    setVerifying(true); setResult(null);
-
+  const doVerify = async () => {
+    if (!file) return;
+    setLoading(true); setError('');
     try {
-      for (let i = 1; i <= 4; i++) {
-        setVerifyStep(i);
-        await new Promise(r => setTimeout(r, 600));
-      }
-
-      // Real Go Backend API Call
-      const data = await verifyFile(verifyFile_, fileId);
+      const data = await verifyFile(file);
       setResult(data);
-      setVerifying(false); setVerifyStep(0);
-
-      if (data.status === 'tampered') {
-        onNotify('⚠️ TAMPER DETECTED! File integrity compromised!', 'error');
-      } else {
-        onNotify('✅ File integrity verified — VALID!', 'success');
-      }
     } catch (err) {
-      setVerifying(false); setVerifyStep(0);
-      onNotify('Verify failed: ' + err.message, 'error');
+      setError(err.message || 'Verification failed. Is the backend running?');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const reset = () => { setVerifyFile(null); setResult(null); setVerifyStep(0); setFileId(''); };
+  const reset = () => {
+    setFile(null); setResult(null); setError(''); setLoading(false);
+  };
+
+  /* ── Determine status from various backend response shapes ── */
+  const resolveStatus = data => {
+    if (!data) return null;
+    // Backend may return verified: true/false, or status: "VALID"/"TAMPERED"
+    if (data.verified === true)  return 'VALID';
+    if (data.verified === false) return 'TAMPERED';
+    if (typeof data.status === 'string') return data.status.toUpperCase();
+    return null;
+  };
+  const status = resolveStatus(result);
+  const isValid = status === 'VALID';
+  const fileRecord = result?.file || result?.fileRecord || result;
 
   return (
-    <motion.div className="page-container" variants={pageVariants} initial="initial" animate="animate">
-
-      {/* Result */}
-      {result && (
-        <motion.div className="verify-result-card" variants={scalePop} initial="initial" animate="animate"
-          style={{
-            borderColor: result.status === 'valid' ? 'rgba(0,255,157,0.3)' : 'rgba(255,59,92,0.3)',
-            background: result.status === 'valid' ? 'rgba(0,255,157,0.04)' : 'rgba(255,59,92,0.04)',
-          }}>
-          <motion.span style={{ display: 'block', marginBottom: 16 }}
-            initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300 }}>
-            {result.status === 'valid'
-              ? <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-              : <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            }
-          </motion.span>
-
-          <div style={{ fontSize: 24, fontWeight: 800, color: result.status === 'valid' ? 'var(--green)' : 'var(--red)', marginBottom: 8 }}>
-            {result.status === 'valid' ? 'FILE INTEGRITY VERIFIED' : 'TAMPER DETECTED!'}
-          </div>
-
-          <div style={{ fontSize: 13, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 28 }}>
-            {result.message}
-          </div>
-
-          {/* Hash Comparison */}
-          <div className="hash-compare">
-            <div className="hash-box">
-              <div className="hash-box-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:5,verticalAlign:'middle'}}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-                Original Hash (MongoDB)
-              </div>
-              <div className="hash-box-value hash-match">{result.originalHash}</div>
-            </div>
-            <div className="hash-box">
-              <div className="hash-box-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:5,verticalAlign:'middle'}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Current File Hash
-              </div>
-              <div className={`hash-box-value ${result.isMatch ? 'hash-match' : 'hash-mismatch'}`}>
-                {result.currentHash}
-              </div>
-            </div>
-          </div>
-
-          <div style={{
-            marginTop: 16, padding: '10px 20px', borderRadius: 8, display: 'inline-block',
-            background: result.isMatch ? 'rgba(0,255,157,0.1)' : 'rgba(255,59,92,0.1)',
-            border: `1px solid ${result.isMatch ? 'rgba(0,255,157,0.3)' : 'rgba(255,59,92,0.3)'}`,
-            fontFamily: 'var(--font-mono)', fontSize: 13,
-            color: result.isMatch ? 'var(--green)' : 'var(--red)'
-          }}>
-            {result.isMatch ? '✓ HASH MATCH — File is authentic' : '✗ HASH MISMATCH — File has been altered'}
-          </div>
-
-          <div style={{ marginTop: 24 }}>
-            <motion.button className="btn btn-outline" whileHover={{ scale: 1.02 }} onClick={reset}>
-              Verify Another File
-            </motion.button>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Verify Form */}
-      {!result && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-
-          {/* Left — Upload */}
-          <motion.div className="section-card" variants={cardVariants} initial="initial" animate="animate">
-            <div className="section-header">
-              <span className="section-title">Verify File Integrity</span>
-            </div>
-
-            {/* File ID Select */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-                Select File to Verify
-              </div>
-              <select
-                value={fileId}
-                onChange={e => setFileId(e.target.value)}
-                onFocus={loadFiles}
-                style={{ width: '100%', padding: '10px 12px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 13, cursor: 'pointer' }}
-              >
-                <option value="">-- Select a file --</option>
-                {files.map(f => (
-                  <option key={f.fileId} value={f.fileId}>
-                    {f.filename} ({f.status})
-                  </option>
-                ))}
-              </select>
-              {loadingFiles && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>Loading files...</div>}
-            </div>
-
-            {/* Or manual input */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--muted)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
-                Or Enter File ID Manually
-              </div>
-              <input
-                type="text"
-                placeholder="FILE-XXXXXX..."
-                value={fileId}
-                onChange={e => setFileId(e.target.value)}
-                style={{ width: '100%', padding: '10px 12px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 13 }}
-              />
-            </div>
-
-            {/* File Upload */}
-            <motion.div className="drop-zone" style={{ padding: 28 }}
-              onClick={() => verifyInputRef.current?.click()}
-              whileHover={{ borderColor: 'var(--accent)' }}>
-              <input ref={verifyInputRef} type="file" style={{ display: 'none' }}
-                onChange={e => e.target.files && setVerifyFile(e.target.files[0])} />
-              <span className="drop-icon" style={{ fontSize: 28, display:'flex', justifyContent:'center' }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              </span>
-              <div className="drop-title" style={{ fontSize: 14 }}>Upload file to verify</div>
-              <div className="drop-sub">Same file jo tune upload kiya tha</div>
-            </motion.div>
-
-            {verifyFile_ && (
-              <div className="file-selected" style={{ marginTop: 12 }}>
-                <div className="file-icon-box">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                </div>
-                <div className="file-info">
-                  <div className="file-name">{verifyFile_.name}</div>
-                  <div className="file-size">{(verifyFile_.size / 1048576).toFixed(2)} MB</div>
-                </div>
-              </div>
-            )}
-
-            {/* Verifying Steps */}
-            {verifying && (
-              <div style={{ marginTop: 16 }}>
-                {VERIFY_STEPS.map((step, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 0', opacity: verifyStep > i ? 1 : 0.3, transition: 'opacity 0.3s' }}>
-                    <span style={{ display:'flex', alignItems:'center' }}>
-                      {verifyStep > i + 1
-                        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                        : verifyStep === i + 1
-                          ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                          : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--border)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/></svg>
-                      }
-                    </span>
-                    <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{step}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <motion.button
-              className="btn btn-primary"
-              style={{ marginTop: 16, width: '100%', justifyContent: 'center' }}
-              disabled={!verifyFile_ || !fileId || verifying}
-              whileHover={!verifyFile_ || !fileId ? {} : { scale: 1.02 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleVerify}>
-              {verifying
-                ? 'Verifying...'
-                : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>Verify Integrity</>}
-            </motion.button>
-          </motion.div>
-
-          {/* Right — How it works */}
-          <motion.div className="section-card" variants={cardVariants} initial="initial" animate="animate">
-            <div className="section-title" style={{ marginBottom: 20 }}>How Verification Works</div>
-            <div className="verify-steps-list">
-              {[
-                { n: '01', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>, title: 'Select File Record', desc: 'Choose which file to verify from the dropdown.' },
-                { n: '02', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>, title: 'Upload Same File', desc: 'Re-upload the same file you originally uploaded.' },
-                { n: '03', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>, title: 'Hash Generated', desc: 'Go backend generates SHA-256 hash of the current file.' },
-                { n: '04', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>, title: 'MongoDB Comparison', desc: 'Original hash stored in MongoDB is compared.' },
-                { n: '05', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{marginRight:6,verticalAlign:'middle'}}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>, title: 'Result', desc: 'Match → Valid. Different → Tampered.' },
-              ].map((s, i) => (
-                <motion.div key={i} className="verify-step-item"
-                  initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.08 }}>
-                  <div className="verify-step-num">{s.n}</div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{s.icon} {s.title}</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>{s.desc}</div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-            <div className="tip-box">
-              💡 SHA-256 is a one-way function. Same file = same hash always. Any modification = completely different hash.
-            </div>
-          </motion.div>
-
+    <div className="page-inner" style={{ maxWidth: 640 }}>
+      <div className="ph">
+        <div>
+          <h1>Verify File Integrity</h1>
+          <p>Re-upload a file to check if it has been tampered with</p>
         </div>
+      </div>
+
+      <div className="how-it-works">
+        <div className="how-step">
+          <div className="how-num">1</div>
+          <span className="how-lbl">Hash computed</span>
+        </div>
+        <span className="how-arr">→</span>
+        <div className="how-step">
+          <div className="how-num">2</div>
+          <span className="how-lbl">Compare with blockchain</span>
+        </div>
+        <span className="how-arr">→</span>
+        <div className="how-step">
+          <div className="how-num">3</div>
+          <span className="how-lbl">Result shown</span>
+        </div>
+      </div>
+
+      {error && (
+        <div className="error-box" style={{ marginBottom: 14 }}>⚠️ {error}</div>
       )}
-    </motion.div>
+
+      {!result && (
+        <>
+          <div
+            className={`dz grn${drag ? ' on' : ''}`}
+            onDragOver={e => { e.preventDefault(); setDrag(true); }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={handleDrop}
+            onClick={() => document.getElementById('vf-input').click()}
+          >
+            <input
+              id="vf-input" type="file" style={{ display: 'none' }}
+              onChange={handleSelect}
+            />
+            <div className="dz-ico">🔍</div>
+            <h3>Drop the file you want to verify</h3>
+            <p>We'll compute its hash and compare it with the blockchain record</p>
+          </div>
+
+          {file && (
+            <div className="card" style={{ marginTop: 11, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 19 }}>📄</span>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>{file.name}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{file.type || 'unknown'}</div>
+                </div>
+              </div>
+              <button className="btn btn-g" style={{ padding: '3px 9px', fontSize: 11 }} onClick={() => setFile(null)}>✕</button>
+            </div>
+          )}
+
+          <button
+            className="btn btn-teal btn-full"
+            style={{ marginTop: 13 }}
+            disabled={!file || loading}
+            onClick={doVerify}
+          >
+            {loading ? '⟳ Verifying...' : '🔍 Verify Integrity'}
+          </button>
+        </>
+      )}
+
+      {result && status && (
+        <>
+          <div className={`vr ${isValid ? 'valid' : 'tampered'}`} style={{ textAlign: 'center' }}>
+            <div className="vr-ico">{isValid ? '✅' : '❌'}</div>
+            <h2>{isValid ? 'VALID — File is intact' : 'TAMPERED — File has been modified'}</h2>
+            <p style={{ marginTop: 5 }}>
+              {isValid
+                ? 'SHA-256 hash matches blockchain record. This file has not been altered.'
+                : 'No matching hash found in the blockchain registry. This file may have been modified.'}
+            </p>
+          </div>
+
+          {isValid && fileRecord && (
+            <div className="ig" style={{ marginTop: 13 }}>
+              <div className="ig-hdr"><span>📋</span><h3>Verification Details</h3></div>
+              {(fileRecord.hash || fileRecord.fileHash) && (
+                <div className="ig-row">
+                  <span className="ig-lbl">SHA-256 Hash</span>
+                  <span className="ig-val mono">{fileRecord.hash || fileRecord.fileHash}</span>
+                </div>
+              )}
+              {(fileRecord.filename || fileRecord.name) && (
+                <div className="ig-row">
+                  <span className="ig-lbl">Original File</span>
+                  <span className="ig-val">{fileRecord.filename || fileRecord.name}</span>
+                </div>
+              )}
+              {fileRecord.uploadedAt && (
+                <div className="ig-row">
+                  <span className="ig-lbl">Uploaded At</span>
+                  <span className="ig-val">{new Date(fileRecord.uploadedAt).toLocaleString()}</span>
+                </div>
+              )}
+              {fileRecord.walletAddress && (
+                <div className="ig-row">
+                  <span className="ig-lbl">Owner Wallet</span>
+                  <span className="ig-val" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                    {fileRecord.walletAddress}
+                  </span>
+                </div>
+              )}
+              {fileRecord.txHash && (
+                <div className="ig-row">
+                  <span className="ig-lbl">TX Hash</span>
+                  <a
+                    href={`https://sepolia.etherscan.io/tx/${fileRecord.txHash}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-purple)', wordBreak: 'break-all' }}
+                  >
+                    {(fileRecord.txHash || '').slice(0, 32)}...
+                  </a>
+                </div>
+              )}
+              <div className="ig-row">
+                <span className="ig-lbl">Blockchain</span>
+                <span className="ig-val" style={{ color: 'var(--accent-teal)' }}>✅ Confirmed on Sepolia</span>
+              </div>
+            </div>
+          )}
+
+          <div className="btn-row">
+            <button className="btn btn-s" style={{ flex: 1 }} onClick={reset}>Verify Another</button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

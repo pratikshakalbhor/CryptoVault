@@ -1,19 +1,33 @@
 // ─────────────────────────────────────────
 // api.js — Go Backend API calls
-// Base URL: http://localhost:5000/api
+// Base URL: http://localhost:5000
 // ─────────────────────────────────────────
 
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
+// ── Helper — Safe JSON parse with error handling ──
+const safeJsonParse = (text) => {
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    // If it starts with '<', it's likely HTML error
+    if (text.trim().startsWith('<')) {
+      throw new Error('Backend returned HTML (likely an error page). Check server logs.');
+    }
+    throw err;
+  }
+};
 
 // ── Helper — fetch with error handling ──
 const apiFetch = async (url, options = {}) => {
   try {
-    const response = await fetch(`${BASE_URL}${url}`, {
-      headers: { 'Content-Type': 'application/json', ...options.headers },
+    const response = await fetch(`${BASE_URL}/api${url}`, {
+      headers: { "Content-Type": "application/json", ...options.headers },
       ...options,
     });
 
-    const data = await response.json();
+    const text = await response.text();
+    const data = safeJsonParse(text);
 
     if (!response.ok) {
       throw new Error(data.error || `HTTP Error: ${response.status}`);
@@ -21,7 +35,8 @@ const apiFetch = async (url, options = {}) => {
 
     return data;
   } catch (err) {
-    throw new Error(err.message || 'Network error — Go backend running aahe ka?');
+    console.error('API Error:', err);
+    throw new Error(err.message || "Network error — Is Go backend running?");
   }
 };
 
@@ -29,32 +44,39 @@ const apiFetch = async (url, options = {}) => {
 // 1. UPLOAD FILE
 // POST /api/upload
 // ─────────────────────────────────────────
-export const uploadFile = async (file, walletAddress, expiryDate, parentFileId, versionNote) => {
+export const uploadFile = async (
+  file,
+  wallet,
+  expiry,
+  parentId,
+  note
+) => {
   const formData = new FormData();
-  formData.append('file', file);
-  formData.append('walletAddress', walletAddress);
-  if (expiryDate) {
-    formData.append('expiryDate', expiryDate);
-  }
-  if (parentFileId) {
-    formData.append('parentFileId', parentFileId);
-  }
-  if (versionNote) {
-    formData.append('versionNote', versionNote);
-  }
+
+  formData.append("file", file);
+  formData.append("walletAddress", wallet || "");
+
+  if (expiry) formData.append("expiryDate", expiry);
+  if (parentId) formData.append("parentFileId", parentId);
+  if (note) formData.append("versionNote", note);
 
   try {
-    const response = await fetch(`${BASE_URL}/upload`, {
-      method: 'POST',
+    const res = await fetch(`${BASE_URL}/api/upload`, {
+      method: "POST",
       body: formData,
-      // Content-Type set karu naka — browser automatically sets multipart
     });
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Upload failed');
+    const text = await res.text();
+    const data = safeJsonParse(text);
+
+    if (!res.ok) {
+      throw new Error(data.error || `Upload failed: ${res.status}`);
+    }
+
     return data;
   } catch (err) {
-    throw new Error(err.message || 'Upload failed');
+    console.error('Upload error:', err);
+    throw new Error(err.message || "Upload failed");
   }
 };
 
@@ -64,20 +86,26 @@ export const uploadFile = async (file, walletAddress, expiryDate, parentFileId, 
 // ─────────────────────────────────────────
 export const verifyFile = async (file, fileId) => {
   const formData = new FormData();
-  formData.append('file', file);
-  formData.append('fileId', fileId);
+  formData.append("file", file);
+  if (fileId) formData.append("fileId", fileId);
 
   try {
-    const response = await fetch(`${BASE_URL}/verify`, {
-      method: 'POST',
+    const response = await fetch(`${BASE_URL}/api/verify`, {
+      method: "POST",
       body: formData,
     });
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Verify failed');
+    const text = await response.text();
+    const data = safeJsonParse(text);
+
+    if (!response.ok) {
+      throw new Error(data.error || `Verify failed: ${response.status}`);
+    }
+
     return data;
   } catch (err) {
-    throw new Error(err.message || 'Verify failed');
+    console.error('Verify error:', err);
+    throw new Error(err.message || "Verify failed");
   }
 };
 
@@ -86,7 +114,7 @@ export const verifyFile = async (file, fileId) => {
 // GET /api/files?wallet=0x...
 // ─────────────────────────────────────────
 export const getAllFiles = async (walletAddress) => {
-  const query = walletAddress ? `?wallet=${walletAddress}` : '';
+  const query = walletAddress ? `?wallet=${walletAddress}` : "";
   return apiFetch(`/files${query}`);
 };
 
@@ -111,7 +139,7 @@ export const getFileVersions = async (fileId) => {
 // PUT /api/files/:id/revoke
 // ─────────────────────────────────────────
 export const revokeFile = async (fileId) => {
-  return apiFetch(`/files/${fileId}/revoke`, { method: 'PUT' });
+  return apiFetch(`/files/${fileId}/revoke`, { method: "PUT" });
 };
 
 // ─────────────────────────────────────────
@@ -120,19 +148,19 @@ export const revokeFile = async (fileId) => {
 // ─────────────────────────────────────────
 export const downloadCertificate = async (fileId) => {
   try {
-    const response = await fetch(`${BASE_URL}/files/${fileId}/certificate`);
-    if (!response.ok) throw new Error('Certificate generation failed');
+    const response = await fetch(`${BASE_URL}/api/files/${fileId}/certificate`);
+    if (!response.ok) throw new Error("Certificate generation failed");
 
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `Certificate_${fileId}.pdf`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
   } catch (err) {
-    throw new Error(err.message || 'Failed to download certificate');
+    throw new Error(err.message || "Failed to download certificate");
   }
 };
 
@@ -142,10 +170,10 @@ export const downloadCertificate = async (fileId) => {
 // ─────────────────────────────────────────
 export const publicVerifyFile = async (file, publicId) => {
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append("file", file);
 
-  const response = await fetch(`${BASE_URL}/public/verify/${publicId}`, {
-    method: 'POST',
+  const response = await fetch(`${BASE_URL}/api/public/verify/${publicId}`, {
+    method: "POST",
     body: formData,
   });
   return response.json();
@@ -155,7 +183,7 @@ export const publicVerifyFile = async (file, publicId) => {
 // Access Control API
 export const updateVisibility = async (fileId, visibility, sharedWith = []) => {
   return apiFetch(`/files/${fileId}/visibility`, {
-    method: 'PUT',
+    method: "PUT",
     body: JSON.stringify({ visibility, sharedWith }),
   });
 };
@@ -165,7 +193,7 @@ export const updateVisibility = async (fileId, visibility, sharedWith = []) => {
 // GET /api/stats
 // ─────────────────────────────────────────
 export const getStats = async () => {
-  return apiFetch('/stats');
+  return apiFetch("/stats");
 };
 
 // ─────────────────────────────────────────
@@ -174,7 +202,7 @@ export const getStats = async () => {
 // ─────────────────────────────────────────
 export const healthCheck = async () => {
   try {
-    const response = await fetch('http://localhost:5000/');
+    const response = await fetch(`${BASE_URL}/`);
     return response.ok;
   } catch {
     return false;

@@ -19,99 +19,89 @@ import (
 func UploadFile(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "File nahi mila"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File not found"})
 		return
 	}
 	defer file.Close()
 
-	wallet := c.Request.FormValue("walletAddress")
-	if wallet == "" {
-		wallet = "unknown"
-	}
+	wallet := c.PostForm("walletAddress")
+	parentFileId := c.PostForm("parentFileId")
+	versionNote := c.PostForm("versionNote")
 
-	// Step 1 — File bytes read karo
+	// Read file
 	fileBytes, err := io.ReadAll(file)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "File read error"})
 		return
 	}
 
-	// Step 2 — SHA-256 hash
+	// Hash
 	fileHash := utils.GenerateSHA256FromBytes(fileBytes)
 
-	// Step 3 — AES-256 encrypt
+	// Encrypt
 	encryptedBytes, err := utils.EncryptAES(fileBytes)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Encrypt error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Encryption failed"})
 		return
 	}
 
-	// Step 4 — Pinata IPFS upload (encrypted file)
-	ipfsURL, err := utils.UploadToPinata(encryptedBytes, "encrypted_"+header.Filename)
+	// Upload to IPFS
+	ipfsURL, err := utils.UploadToPinata(encryptedBytes, header.Filename)
 	if err != nil {
-		// IPFS fail zali tari — mock URL vaprto, upload continue hoto
-		ipfsURL = fmt.Sprintf("https://gateway.pinata.cloud/ipfs/mock_%s", header.Filename)
+		ipfsURL = "mock_url"
 	}
 
-	// Step 5 — Mock TX hash
+	// Mock blockchain TX
 	txHash := utils.MockTxHash(fileHash)
 
-	// Step 6 — File IDs
 	fileID := fmt.Sprintf("FILE-%s%d", randomString(6), time.Now().Unix())
-	publicID := randomString(12)
+	publicID := randomString(10)
 
-	versionNote := c.Request.FormValue("versionNote")
 	collection := database.GetCollection("files")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Step 7 — Expiry date
-	expiryDateStr := c.Request.FormValue("expiryDate")
+	// Expiry
+	expiryStr := c.PostForm("expiryDate")
 	var expiryDate *time.Time
-	if expiryDateStr != "" {
-		parsed, err := time.Parse("2006-01-02", expiryDateStr)
-		if err == nil {
-			expiryDate = &parsed
-		}
+	if expiryStr != "" {
+		t, _ := time.Parse("2006-01-02", expiryStr)
+		expiryDate = &t
 	}
 
-	// Step 8 — Check if same file exists for this wallet (Versioning)
-	var existing models.FileRecord
-	err = collection.FindOne(ctx, bson.M{
-		"filename":      header.Filename,
-		"walletAddress": wallet,
-	}).Decode(&existing)
+	// VERSION LOGIC FIX
+	if parentFileId != "" {
+		var existing models.FileRecord
+		err := collection.FindOne(ctx, bson.M{"fileId": parentFileId}).Decode(&existing)
 
-	if err == nil {
-		// File file exists — Update Versions array
-		newVersionNum := existing.Version + 1
-		newVersionRecord := models.VersionRecord{
-			VersionNumber: newVersionNum,
-			Hash:          fileHash,
-			TxHash:        txHash,
-			Timestamp:     time.Now(),
-			Note:          versionNote,
+		if err == nil {
+			newVersion := existing.Version + 1
+
+			_, _ = collection.UpdateOne(ctx,
+				bson.M{"fileId": parentFileId},
+				bson.M{
+					"$set": bson.M{
+						"originalHash": fileHash,
+						"txHash":       txHash,
+						"version":      newVersion,
+						"uploadedAt":   time.Now(),
+					},
+					"$push": bson.M{
+						"versions": models.VersionRecord{
+							VersionNumber: newVersion,
+							Hash:          fileHash,
+							TxHash:        txHash,
+							Timestamp:     time.Now(),
+							Note:          versionNote,
+						},
+					},
+				})
+
+			fileID = parentFileId
+			publicID = existing.PublicID
 		}
-
-		_, err = collection.UpdateOne(ctx, bson.M{"fileId": existing.FileID}, bson.M{
-			"$set": bson.M{
-				"originalHash": fileHash,
-				"txHash":       txHash,
-				"version":      newVersionNum,
-				"uploadedAt":   time.Now(),
-			},
-			"$push": bson.M{"versions": newVersionRecord},
-		})
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Update error"})
-			return
-		}
-
-		fileID = existing.FileID
-		publicID = existing.PublicID
 	} else {
-		// New File
+		// New file
 		record := models.FileRecord{
 			FileID:        fileID,
 			PublicID:      publicID,
@@ -122,41 +112,26 @@ func UploadFile(c *gin.Context) {
 			WalletAddress: wallet,
 			TxHash:        txHash,
 			Status:        "valid",
-			IsRevoked:     false,
 			ExpiryDate:    expiryDate,
-			IsExpired:     false,
 			UploadedAt:    time.Now(),
 			Version:       1,
-			Versions: []models.VersionRecord{
-				{
-					VersionNumber: 1,
-					Hash:          fileHash,
-					TxHash:        txHash,
-					Timestamp:     time.Now(),
-					Note:          "Initial Version",
-				},
-			},
-			GasUsed:     "43383",
-			BlockNumber: "",
 		}
 
 		_, err = collection.InsertOne(ctx, record)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "MongoDB save error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "DB save failed"})
 			return
 		}
 	}
 
-	// Response
-	c.JSON(http.StatusCreated, gin.H{
-		"success":   true,
-		"message":   "File sealed on blockchain!",
-		"fileId":    fileID,
-		"publicId":  publicID,
-		"filename":  header.Filename,
-		"fileHash":  fileHash,
-		"txHash":    txHash,
-		"timestamp": time.Now().Format(time.RFC3339),
+	//  FINAL RESPONSE FIX
+	c.JSON(http.StatusOK, gin.H{
+		"fileId":   fileID,
+		"publicId": publicID,
+		"filename": header.Filename,
+		"fileHash": fileHash,
+		"fileSize": header.Size, //  important
+		"txHash":   txHash,
 	})
 }
 
