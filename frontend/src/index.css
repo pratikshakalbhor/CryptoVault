@@ -144,7 +144,7 @@ html, body, #root {
 }
 
 /* ── MAIN AREA ── */
-.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.main { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
 
 .navbar {
   height: 52px;
@@ -188,12 +188,18 @@ html, body, #root {
 .wallet-chip:hover { border-color: var(--accent-cyan); }
 
 .page {
-  flex: 1;
+  flex-grow: 1;
   overflow-y: auto;
-  padding: 26px;
+  padding: 24px;
+  display: flex;
+  justify-content: center;
 }
 
-.page-inner { max-width: 900px; }
+.page-inner {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
 
 .ph {
   margin-bottom: 22px;

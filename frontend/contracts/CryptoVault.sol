@@ -87,7 +87,8 @@ contract CryptoVault {
         string memory _mongoDbRef,
         string memory _cloudinaryUrl,
         uint256 _fileSize
-    ) public onlyAuthorized {
+    ) public {
+        // [DEMO MODE] Removed 'onlyAuthorized' modifier to allow any connected wallet to seal documents.
         require(_fileSize > 0, "Invalid file size"); // ← add kara
         require(_fileSize <= 100 * 1024 * 1024, "File too large"); // 100MB limit
         require(!files[_fileId].exists, "File already sealed");

@@ -1,12 +1,13 @@
 import { useState, useRef } from 'react';
 import { uploadFile } from '../utils/api';
+import { sealFileOnChain } from '../utils/blockchain';
 
 const STEPS = [
   { id: 'hash',    label: 'Generating SHA-256 hash' },
   { id: 'encrypt', label: 'Encrypting with AES-256' },
   { id: 'cloud',   label: 'Uploading to IPFS/Pinata' },
   { id: 'db',      label: 'Saving metadata to MongoDB' },
-  { id: 'chain',   label: 'Registering on Sepolia blockchain' },
+  { id: 'chain',   label: 'Waiting for MetaMask Transaction' },
 ];
 
 const fmtSize = b =>
@@ -29,23 +30,43 @@ export default function Upload({ walletAddress, onNavigate }) {
   const handleDrop = e => {
     e.preventDefault(); setDrag(false);
     const f = e.dataTransfer.files[0];
-    if (f) { setFile(f); setError(''); setResult(null); }
+    if (f) { 
+      console.log("File selected via Drop:", f);
+      setFile(f); setError(''); setResult(null); 
+    }
   };
+  
   const handleFileChange = e => {
     const f = e.target.files[0];
-    if (f) { setFile(f); setError(''); setResult(null); }
+    if (f) { 
+      console.log("File selected via Picker:", f);
+      setFile(f); setError(''); setResult(null); 
+    }
   };
 
-  const handleUpload = async () => {
+  const handleUpload = async (e) => {
+    if (e) e.preventDefault();
+    console.log("Upload triggered - starting new flow");
     if (!file) return;
+    
+    // Safety check for MetaMask
+    if (!window.ethereum) {
+      setError("MetaMask is not installed. Please install it to upload to Blockchain.");
+      return;
+    }
+
     setPhase('uploading');
-    setStepsDone([]); setActiveStep(null); setProgress(0); setError('');
+    setStepsDone([]); 
+    setActiveStep(null); 
+    setProgress(0); 
+    setError('');
+
     try {
-      // Simulate step-by-step progression while real upload runs
+      // Setup visual progression for off-chain steps (stops before chain step)
       const stepDuration = 600;
       let si = 0;
       const stepTimer = setInterval(() => {
-        if (si < STEPS.length) {
+        if (si < STEPS.length - 1) { 
           setActiveStep(STEPS[si].id);
           if (si > 0) setStepsDone(prev => [...prev, STEPS[si - 1].id]);
           setProgress(Math.round((si / STEPS.length) * 80));
@@ -53,18 +74,37 @@ export default function Upload({ walletAddress, onNavigate }) {
         }
       }, stepDuration);
 
+      // --- 1. Call Backend API (Generate hash, encrypt, MongoDB, etc) ---
+      console.log("Sending file to backend...");
       const data = await uploadFile(file, walletAddress || '');
-
+      console.log("Backend response received:", data);
+      
+      const file_ = data.file || data;
       clearInterval(stepTimer);
-      // Mark all steps done
+
+      // --- 2. Call MetaMask for real transaction ---
+      setActiveStep('chain');
+      setProgress(85);
+      setStepsDone(STEPS.map(s => s.id).filter(id => id !== 'chain')); 
+      
+      console.log("Prompting MetaMask with sealFile...");
+      const realTxHash = await sealFileOnChain(file_);
+      console.log("MetaMask Transaction Confirmed! TxHash:", realTxHash);
+
+      // Inject real transaction hash into our result data
+      file_.txHash = realTxHash;
+
+      // Finish progression
       setStepsDone(STEPS.map(s => s.id));
       setActiveStep(null);
       setProgress(100);
-      setResult(data);
+      setResult(file_);
       setPhase('done');
+      
     } catch (err) {
+      console.error(err);
       setPhase('idle');
-      setError(err.message || 'Upload failed. Is the Go backend running?');
+      setError(err.message || 'Upload or Transaction failed.');
       setStepsDone([]); setActiveStep(null); setProgress(0);
     }
   };
@@ -95,7 +135,7 @@ export default function Upload({ walletAddress, onNavigate }) {
               return (
                 <div key={s.id} className="up-step">
                   <div className={`step-dot ${done ? 'sd-done' : active ? 'sd-act' : 'sd-pend'}`}>
-                    {done ? '✓' : active ? '⟳' : '○'}
+                     {done ? '✓' : active && s.id === 'chain' ? '🦊' : active ? '⟳' : '○'}
                   </div>
                   <span style={{
                     color: done ? 'var(--text-primary)' : active ? 'var(--accent-cyan)' : 'var(--text-muted)',
@@ -120,7 +160,7 @@ export default function Upload({ walletAddress, onNavigate }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
           <div className="vr valid" style={{ textAlign: 'center' }}>
             <div className="vr-ico">✅</div>
-            <h2>File Registered Successfully!</h2>
+            <h2>File Secured Successfully!</h2>
             <p>Encrypted, stored, and registered on the Sepolia blockchain.</p>
           </div>
           <div className="card">
@@ -131,7 +171,7 @@ export default function Upload({ walletAddress, onNavigate }) {
                   {file_.hash || file_.fileHash}
                 </span>
               </DetailRow>
-              <DetailRow label="Blockchain TX">
+              <DetailRow label="Real TxHash">
                 <a
                   href={`https://sepolia.etherscan.io/tx/${file_.txHash}`}
                   target="_blank" rel="noreferrer"
@@ -149,6 +189,19 @@ export default function Upload({ walletAddress, onNavigate }) {
               ) : null}
             </div>
           </div>
+          
+          {/* Etherscan Direct Button */}
+          <div className="btn-row" style={{ marginTop: 8 }}>
+             <a
+                href={`https://sepolia.etherscan.io/tx/${file_.txHash}`}
+                target="_blank" rel="noreferrer"
+                className="btn btn-purple" 
+                style={{ flex: 1, textAlign: 'center', textDecoration: 'none', justifyContent: 'center' }}
+              >
+                🔗 View on Etherscan
+              </a>
+          </div>
+
           <div className="btn-row">
             <button className="btn btn-s" style={{ flex: 1 }} onClick={reset}>Upload Another</button>
             <button className="btn btn-p" style={{ flex: 1 }} onClick={() => onNavigate('my-files')}>View My Files</button>
@@ -214,7 +267,7 @@ export default function Upload({ walletAddress, onNavigate }) {
         disabled={!file}
         onClick={handleUpload}
       >
-        ⬆️ Upload &amp; Register on Blockchain
+        ⬆️ Upload &amp; Secure via MetaMask 🦊
       </button>
     </div>
   );

@@ -55,11 +55,25 @@ export default function App() {
     }
   };
 
+  const getPageTitle = (page) => {
+    switch (page) {
+      case 'dashboard': return 'Dashboard';
+      case 'upload': return 'Upload File';
+      case 'verify': return 'Verify File';
+      case 'my-files': return 'My Files';
+      case 'blockchain-log': return 'Blockchain Log';
+      case 'file-details': return 'File Details';
+      case 'alerts': return 'Alerts';
+      case 'profile': return 'Profile';
+      default: return 'Dashboard';
+    }
+  };
+
   return (
     <div className="app">
       <Sidebar activePage={activePage} onNavigate={handleNavigate} walletAddress={walletAddress} onLogout={handleLogout} />
       <div className="main">
-        <Topbar walletAddress={walletAddress} />
+        <Topbar walletAddress={walletAddress} title={getPageTitle(activePage)} />
         <div className="page">
           {renderPage()}
         </div>
