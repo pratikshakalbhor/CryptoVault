@@ -48,9 +48,9 @@ export const sealFileOnChain = async (fileData) => {
     } catch (error) {
         console.error("Blockchain error:", error);
         
-        // Check for user cancelling transaction in MetaMask (ethers v6 uses ACTION_REJECTED or 4001)
-        if (error.code === 4001 || error.code === "ACTION_REJECTED") {
-            throw new Error("Transaction rejected by user in MetaMask");
+        // Check for user cancelling transaction or not authorized errors
+        if (error.code === 4001 || error.code === "ACTION_REJECTED" || error.message?.includes("User denied") || error.message?.includes("Not authorized") || error.message?.includes("rejected")) {
+            throw new Error("Not authorized: Transaction was rejected by user or permissions failed.");
         }
         
         throw new Error(error.reason || error.message || "Smart contract transaction failed");

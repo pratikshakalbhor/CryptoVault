@@ -87,9 +87,15 @@ export default function Upload({ walletAddress, onNavigate }) {
       setProgress(85);
       setStepsDone(STEPS.map(s => s.id).filter(id => id !== 'chain')); 
       
-      console.log("Prompting MetaMask with sealFile...");
-      const realTxHash = await sealFileOnChain(file_);
-      console.log("MetaMask Transaction Confirmed! TxHash:", realTxHash);
+      let realTxHash = "Failed - Not Authorized / Fallback";
+      try {
+        console.log("Prompting MetaMask with sealFile...");
+        realTxHash = await sealFileOnChain(file_);
+        console.log("MetaMask Transaction Confirmed! TxHash:", realTxHash);
+      } catch (chainErr) {
+        console.warn("Blockchain sealing failed:", chainErr);
+        setError(chainErr.message || "Not authorized: Blockchain tx failed, but file was stored securely as a fallback.");
+      }
 
       // Inject real transaction hash into our result data
       file_.txHash = realTxHash;
@@ -172,13 +178,17 @@ export default function Upload({ walletAddress, onNavigate }) {
                 </span>
               </DetailRow>
               <DetailRow label="Real TxHash">
-                <a
-                  href={`https://sepolia.etherscan.io/tx/${file_.txHash}`}
-                  target="_blank" rel="noreferrer"
-                  style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-purple)', wordBreak: 'break-all' }}
-                >
-                  {(file_.txHash || '').slice(0, 35)}...
-                </a>
+                {file_.txHash && file_.txHash.startsWith("Failed") ? (
+                  <span style={{ fontSize: 10, color: '#fca5a5' }}>{file_.txHash}</span>
+                ) : (
+                  <a
+                    href={`https://sepolia.etherscan.io/tx/${file_.txHash}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-purple)', wordBreak: 'break-all' }}
+                  >
+                    {(file_.txHash || '').slice(0, 35)}...
+                  </a>
+                )}
               </DetailRow>
               {file_.cloudURL || file_.ipfsURL ? (
                 <DetailRow label="Storage URL">
@@ -191,16 +201,18 @@ export default function Upload({ walletAddress, onNavigate }) {
           </div>
           
           {/* Etherscan Direct Button */}
-          <div className="btn-row" style={{ marginTop: 8 }}>
-             <a
-                href={`https://sepolia.etherscan.io/tx/${file_.txHash}`}
-                target="_blank" rel="noreferrer"
-                className="btn btn-purple" 
-                style={{ flex: 1, textAlign: 'center', textDecoration: 'none', justifyContent: 'center' }}
-              >
-                🔗 View on Etherscan
-              </a>
-          </div>
+          {file_.txHash && !file_.txHash.startsWith("Failed") && (
+            <div className="btn-row" style={{ marginTop: 8 }}>
+               <a
+                  href={`https://sepolia.etherscan.io/tx/${file_.txHash}`}
+                  target="_blank" rel="noreferrer"
+                  className="btn btn-purple" 
+                  style={{ flex: 1, textAlign: 'center', textDecoration: 'none', justifyContent: 'center' }}
+                >
+                  🔗 View on Etherscan
+                </a>
+            </div>
+          )}
 
           <div className="btn-row">
             <button className="btn btn-s" style={{ flex: 1 }} onClick={reset}>Upload Another</button>

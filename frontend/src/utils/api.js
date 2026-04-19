@@ -166,17 +166,10 @@ export const downloadCertificate = async (fileId) => {
 
 // ─────────────────────────────────────────
 // 5.6 PUBLIC VERIFY
-// POST /api/public/verify/:publicId
+// GET /api/public/verify/:publicId
 // ─────────────────────────────────────────
-export const publicVerifyFile = async (file, publicId) => {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const response = await fetch(`${BASE_URL}/api/public/verify/${publicId}`, {
-    method: "POST",
-    body: formData,
-  });
-  return response.json();
+export const publicVerifyFile = async (publicId) => {
+  return apiFetch(`/public/verify/${publicId}`);
 };
 
 // ─────────────────────────────────────────

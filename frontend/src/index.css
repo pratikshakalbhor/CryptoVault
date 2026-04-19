@@ -191,13 +191,12 @@ html, body, #root {
   flex-grow: 1;
   overflow-y: auto;
   padding: 24px;
-  display: flex;
-  justify-content: center;
+  display: block;
 }
 
 .page-inner {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 
@@ -571,6 +570,30 @@ tr:hover td { background: var(--bg-card-hover); }
   font-family: var(--font-main); font-weight: 600; flex-shrink: 0;
 }
 .copy-btn:hover { text-decoration: underline; }
+
+/* ── FILE PREVIEW ── */
+.preview-container {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  min-height: 150px;
+}
+.preview-img {
+  max-width: 100%;
+  max-height: 250px;
+  border-radius: var(--r-sm);
+  object-fit: contain;
+}
+.preview-icon {
+  font-size: 64px;
+  opacity: 0.8;
+}
 
 /* ── MISC ── */
 .back-btn {

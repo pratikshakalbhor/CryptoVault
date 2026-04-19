@@ -173,26 +173,31 @@ export default function Dashboard({ onNavigate, walletAddress }) {
               </tr>
             </thead>
             <tbody>
-              {files.slice(0, 5).map(f => (
+              {files.slice(0, 5).map(f => {
+                const isExpired = f.isExpired || (f.expiryDate && new Date(f.expiryDate) < new Date());
+                return (
                 <tr key={f.fileId || f.id} className="tr-click" onClick={() => onNavigate('file-details', f)}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                       <span style={{
                         width: 7, height: 7, borderRadius: '50%',
-                        background: f.status === 'valid' ? 'var(--accent-teal)' : 'var(--accent-red)',
+                        background: isExpired ? '#fca5a5' : f.status === 'valid' ? 'var(--accent-teal)' : 'var(--accent-red)',
                         flexShrink: 0, display: 'inline-block',
                       }} />
                       <div>
-                        <div className="fname">{f.filename || f.name}</div>
+                        <div className="fname">
+                          {f.filename || f.name}
+                          {isExpired && <span style={{fontSize:9, color:'#fca5a5', border:'1px solid #fca5a5', padding:'1px 4px', borderRadius:4, marginLeft:6}}>EXPIRED</span>}
+                        </div>
                         <div className="ftype">{f.fileType || f.type}</div>
                       </div>
                     </div>
                   </td>
                   <td>{hashPill(f.hash || f.fileHash)}</td>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtSize(f.fileSize)}</td>
-                  <td><StatusBadge status={f.status} /></td>
+                  <td><StatusBadge status={f.status} isExpired={isExpired} /></td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         )}
@@ -201,7 +206,8 @@ export default function Dashboard({ onNavigate, walletAddress }) {
   );
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, isExpired }) {
+  if (isExpired) return <span className="badge b-pending" style={{ color: '#fca5a5', borderColor: '#fca5a5' }}>⚠️ Expired</span>;
   const cls = status === 'valid' ? 'b-valid' : status === 'tampered' ? 'b-tampered' : 'b-pending';
   const icon = status === 'valid' ? '✅' : status === 'tampered' ? '❌' : '⏳';
   return <span className={`badge ${cls}`}>{icon} {status}</span>;

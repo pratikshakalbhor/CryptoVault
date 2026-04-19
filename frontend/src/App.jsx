@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './index.css';
 
 import Login        from './pages/Login';
@@ -12,11 +12,20 @@ import BlockchainLog from './pages/BlockchainLog';
 import FileDetails  from './pages/FileDetails';
 import Alerts       from './pages/Alerts';
 import Profile      from './pages/Profile';
+import PublicVerify from './pages/PublicVerify';
 
 export default function App() {
   const [walletAddress, setWalletAddress] = useState(null);
   const [activePage, setActivePage]       = useState('dashboard');
   const [selectedFile, setSelectedFile]   = useState(null);
+  const [publicVerifyId, setPublicVerifyId] = useState(null);
+
+  useEffect(() => {
+    if (window.location.pathname.startsWith('/verify-public/')) {
+      const id = window.location.pathname.split('/').pop();
+      if (id) setPublicVerifyId(id);
+    }
+  }, []);
 
   const handleNavigate = (page, fileData) => {
     setActivePage(page);
@@ -27,6 +36,10 @@ export default function App() {
     setWalletAddress(null);
     setActivePage('dashboard');
   };
+
+  if (publicVerifyId) {
+    return <PublicVerify publicId={publicVerifyId} />;
+  }
 
   if (!walletAddress) {
     return <Login onConnected={addr => { setWalletAddress(addr); setActivePage('dashboard'); }} />;
