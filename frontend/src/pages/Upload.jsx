@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { uploadFile } from '../utils/api';
 import { sealFileOnChain } from '../utils/blockchain';
 import { Activity, AlertTriangle, CheckCircle, Circle, Cloud, FileText, Folder, Link, Lock, RefreshCw, UploadCloud, X } from 'lucide-react';
@@ -17,7 +18,8 @@ const fmtSize = b =>
     ? (b / 1024).toFixed(2) + ' KB'
     : (b / 1048576).toFixed(2) + ' MB';
 
-export default function Upload({ walletAddress, onNavigate }) {
+export default function Upload({ walletAddress }) {
+  const navigate = useNavigate();
   const [phase, setPhase]         = useState('idle');     // idle | uploading | blockchain | done
   const [file, setFile]            = useState(null);
   const [expiryDate, setExpiryDate]= useState('');
@@ -128,6 +130,13 @@ export default function Upload({ walletAddress, onNavigate }) {
       setProgress(100);
       setResult(file_);
       setPhase('done');
+
+      // ── AUTO-NAVIGATE to Verify page after successful seal ──
+      if (txSuccess && (file_.fileId || file_.id)) {
+        setTimeout(() => {
+          navigate('/verify?id=' + (file_.fileId || file_.id));
+        }, 1500); // brief delay so user sees '✅ Sealed' message
+      }
 
     } catch (err) {
       console.error('Upload failed:', err);
@@ -265,7 +274,7 @@ export default function Upload({ walletAddress, onNavigate }) {
 
           <div className="btn-row">
             <button className="btn btn-s" style={{ flex: 1 }} onClick={reset}>Upload Another</button>
-            <button className="btn btn-p" style={{ flex: 1 }} onClick={() => onNavigate('my-files')}>View My Files</button>
+            <button className="btn btn-p" style={{ flex: 1 }} onClick={() => navigate('/my-files')}>View My Files</button>
           </div>
         </div>
       </div>

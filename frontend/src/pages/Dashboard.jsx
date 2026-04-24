@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getAllFiles, getStats } from '../utils/api';
 import { Activity, AlertTriangle, CheckCircle, Clock, FileText, RefreshCw, TrendingUp, UploadCloud, AlertCircle } from 'lucide-react';
 
@@ -15,7 +16,8 @@ function hashPill(hash) {
   );
 }
 
-export default function Dashboard({ onNavigate, walletAddress }) {
+export default function Dashboard({ walletAddress }) {
+  const navigate = useNavigate();
   const [files,  setFiles]  = useState([]);
   const [stats,  setStats]  = useState({ total: 0, valid: 0, tampered: 0 });
   const [loading, setLoading] = useState(true);
@@ -134,7 +136,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
 
       {/* ── Quick action cards ── */}
       <div className="actions-row">
-        <div className="ac" onClick={() => onNavigate('upload')}>
+        <div className="ac" onClick={() => navigate('/upload')}>
           <div className="ac-l">
             <span className="ac-ico"><UploadCloud size={18} /></span>
             <div className="ac-t">
@@ -144,7 +146,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
           </div>
           <span style={{ color: 'var(--text-muted)' }}>→</span>
         </div>
-        <div className="ac grn" onClick={() => onNavigate('verify')}>
+        <div className="ac grn" onClick={() => navigate('/verify')}>
           <div className="ac-l">
             <span className="ac-ico"><CheckCircle size={18} /></span>
             <div className="ac-t">
@@ -160,7 +162,7 @@ export default function Dashboard({ onNavigate, walletAddress }) {
       <div className="card">
         <div className="sec-hdr">
           <span className="sec-title"><Clock size={18} /> Recent Files</span>
-          <button className="view-all" onClick={() => onNavigate('my-files')}>View all →</button>
+          <button className="view-all" onClick={() => navigate('/my-files')}>View all →</button>
         </div>
         {files.length === 0 ? (
           <div className="empty">No files uploaded yet.</div>

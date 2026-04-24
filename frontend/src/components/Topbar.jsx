@@ -1,12 +1,13 @@
 import NotificationDropdown from './NotificationDropdown';
 
-export default function Topbar({ walletAddress, title, theme, toggleTheme, onNavigate }) {
+export default function Topbar({ walletAddress, title, theme, toggleTheme }) {
   const short = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : 'Not connected';
 
   return (
     <header className="navbar">
+      {/* Page Title */}
       <div style={{ marginRight: 'auto', fontWeight: 600, fontSize: '15px' }}>
         {title}
       </div>
@@ -24,8 +25,8 @@ export default function Topbar({ walletAddress, title, theme, toggleTheme, onNav
         {theme === 'light' ? '🌙' : '☀️'}
       </button>
 
-      {/* Notification Bell with Security Audit Dropdown */}
-      <NotificationDropdown walletAddress={walletAddress} onNavigate={onNavigate} />
+      {/* Notification Bell (useNavigate works now — inside BrowserRouter) */}
+      <NotificationDropdown walletAddress={walletAddress} />
 
       {/* Divider */}
       <div style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 12px' }} />

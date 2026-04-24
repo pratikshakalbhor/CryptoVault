@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { publicVerifyFile, downloadCertificate } from '../utils/api';
 import { Activity, AlertTriangle, Award, CheckCircle, FileText, Link } from 'lucide-react';
 
 
-export default function PublicVerify({ publicId }) {
+export default function PublicVerify() {
+  const { publicId } = useParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

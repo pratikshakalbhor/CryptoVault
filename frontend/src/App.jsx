@@ -1,23 +1,70 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import './index.css';
 
-import Login from './pages/Login';
-import Sidebar from './components/Sidebar';
-import Topbar from './components/Topbar';
-import Dashboard from './pages/Dashboard';
-import Upload from './pages/Upload';
-import Verify from './pages/Verify';
-import MyFiles from './pages/MyFiles';
+import Login       from './pages/Login';
+import Sidebar     from './components/Sidebar';
+import Topbar      from './components/Topbar';
+import Dashboard   from './pages/Dashboard';
+import Upload      from './pages/Upload';
+import Verify      from './pages/Verify';
+import MyFiles     from './pages/MyFiles';
 import BlockchainLog from './pages/BlockchainLog';
 import FileDetails from './pages/FileDetails';
-import Profile from './pages/Profile';
+import Profile     from './pages/Profile';
 import PublicVerify from './pages/PublicVerify';
 
+// ── Title map (path → label) ───────────────────────────────────────
+const TITLES = {
+  '/dashboard':      'Dashboard',
+  '/upload':         'Upload File',
+  '/verify':         'Verify File',
+  '/my-files':       'My Files',
+  '/blockchain-log': 'Blockchain Log',
+  '/profile':        'Profile',
+};
+function usePageTitle() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith('/files/')) return 'File Details';
+  return TITLES[pathname] || 'Dashboard';
+}
+
+// ── Auth-guarded layout (Sidebar + Topbar + Routes) ────────────────
+function AppLayout({ walletAddress, onLogout, theme, toggleTheme }) {
+  const title = usePageTitle();
+
+  return (
+    <div className="app">
+      <Sidebar onLogout={onLogout} />
+      <div className="main">
+        <Topbar
+          walletAddress={walletAddress}
+          title={title}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+        <div className="page">
+          <Routes>
+            <Route path="/"                 element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard"        element={<Dashboard   walletAddress={walletAddress} />} />
+            <Route path="/upload"           element={<Upload      walletAddress={walletAddress} />} />
+            <Route path="/verify"           element={<Verify      walletAddress={walletAddress} />} />
+            <Route path="/my-files"         element={<MyFiles     walletAddress={walletAddress} />} />
+            <Route path="/blockchain-log"   element={<BlockchainLog walletAddress={walletAddress} />} />
+            <Route path="/files/:id"        element={<FileDetails walletAddress={walletAddress} />} />
+            <Route path="/profile"          element={<Profile     walletAddress={walletAddress} onLogout={onLogout} />} />
+            {/* catch-all */}
+            <Route path="*"                 element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Root App ────────────────────────────────────────────────────────
 export default function App() {
   const [walletAddress, setWalletAddress] = useState(localStorage.getItem('wallet') || null);
-  const [activePage, setActivePage] = useState('dashboard');
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [publicVerifyId, setPublicVerifyId] = useState(null);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
 
   useEffect(() => {
@@ -25,79 +72,40 @@ export default function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  };
-
-  useEffect(() => {
-    if (window.location.pathname.startsWith('/verify-public/')) {
-      const id = window.location.pathname.split('/').pop();
-      if (id) setPublicVerifyId(id);
-    }
-  }, []);
-
-  const handleNavigate = (page, fileData) => {
-    setActivePage(page);
-    if (fileData) setSelectedFile(fileData);
-  };
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
   const handleLogout = () => {
     localStorage.removeItem('wallet');
     setWalletAddress(null);
-    setActivePage('dashboard');
   };
 
-  if (publicVerifyId) {
-    return <PublicVerify publicId={publicVerifyId} />;
+  // Public verify route — no auth needed
+  if (window.location.pathname.startsWith('/verify-public/')) {
+    return (
+      <Routes>
+        <Route path="/verify-public/:publicId" element={<PublicVerify />} />
+      </Routes>
+    );
   }
 
+  // Login gate
   if (!walletAddress) {
-    return <Login onConnected={addr => { setWalletAddress(addr); setActivePage('dashboard'); }} />;
+    return (
+      <Login
+        onConnected={addr => {
+          localStorage.setItem('wallet', addr);
+          setWalletAddress(addr);
+        }}
+      />
+    );
   }
-
-  const renderPage = () => {
-    switch (activePage) {
-      case 'dashboard':
-        return <Dashboard onNavigate={handleNavigate} walletAddress={walletAddress} />;
-      case 'upload':
-        return <Upload walletAddress={walletAddress} onNavigate={handleNavigate} />;
-      case 'verify':
-        return <Verify walletAddress={walletAddress} />;
-      case 'my-files':
-        return <MyFiles onNavigate={handleNavigate} walletAddress={walletAddress} />;
-      case 'blockchain-log':
-        return <BlockchainLog />;
-      case 'file-details':
-        return <FileDetails file={selectedFile} onNavigate={handleNavigate} />;
-      case 'profile':
-        return <Profile walletAddress={walletAddress} onLogout={handleLogout} />;
-      default:
-        return <Dashboard onNavigate={handleNavigate} walletAddress={walletAddress} />;
-    }
-  };
-
-  const getPageTitle = (page) => {
-    switch (page) {
-      case 'dashboard': return 'Dashboard';
-      case 'upload': return 'Upload File';
-      case 'verify': return 'Verify File';
-      case 'my-files': return 'My Files';
-      case 'blockchain-log': return 'Blockchain Log';
-      case 'file-details': return 'File Details';
-      case 'profile': return 'Profile';
-      default: return 'Dashboard';
-    }
-  };
 
   return (
-    <div className="app">
-      <Sidebar activePage={activePage} onNavigate={handleNavigate} walletAddress={walletAddress} onLogout={handleLogout} />
-      <div className="main">
-        <Topbar walletAddress={walletAddress} title={getPageTitle(activePage)} theme={theme} toggleTheme={toggleTheme} onNavigate={handleNavigate} />
-        <div className="page">
-          {renderPage()}
-        </div>
-      </div>
-    </div>
+    <AppLayout
+      walletAddress={walletAddress}
+      onLogout={handleLogout}
+      theme={theme}
+      toggleTheme={toggleTheme}
+    />
   );
 }

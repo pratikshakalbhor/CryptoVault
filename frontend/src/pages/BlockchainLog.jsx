@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getAllFiles } from '../utils/api';
 import { Activity, AlertTriangle, CheckCircle, RefreshCw, ShieldCheck, FileText } from 'lucide-react';
 
@@ -25,7 +25,7 @@ function StatusBadge({ status }) {
   );
 }
 
-export default function BlockchainLog() {
+export default function BlockchainLog({ walletAddress }) {
   const [files,   setFiles]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
@@ -44,19 +44,19 @@ export default function BlockchainLog() {
     return () => clearInterval(iv);
   }, []);
 
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const res = await getAllFiles();
+      const res = await getAllFiles(walletAddress);
       setFiles(res.files || []);
     } catch (err) {
       setError(err.message || 'Failed to load transactions');
     } finally {
       setLoading(false);
     }
-  };
+  }, [walletAddress]);
 
-  useEffect(() => { fetchFiles(); }, []);
+  useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
   // All files are "uploads"; for verifications we'd need a separate endpoint
   const uploads = files;

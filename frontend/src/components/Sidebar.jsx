@@ -1,5 +1,5 @@
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-
 import {
   LayoutDashboard,
   UploadCloud,
@@ -11,15 +11,21 @@ import {
 } from 'lucide-react';
 
 const NAV = [
-  { id: 'dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
-  { id: 'upload',         label: 'Upload File',    icon: UploadCloud },
-  { id: 'verify',         label: 'Verify File',    icon: ShieldCheck },
-  { id: 'my-files',       label: 'My Files',       icon: Folder },
-  { id: 'blockchain-log', label: 'Blockchain Log', icon: Activity },
-  { id: 'profile',        label: 'Profile',        icon: User },
+  { path: '/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
+  { path: '/upload',         label: 'Upload File',    icon: UploadCloud },
+  { path: '/verify',         label: 'Verify File',    icon: ShieldCheck },
+  { path: '/my-files',       label: 'My Files',       icon: Folder },
+  { path: '/blockchain-log', label: 'Blockchain Log', icon: Activity },
+  { path: '/profile',        label: 'Profile',        icon: User },
 ];
 
-export default function Sidebar({ activePage, onNavigate, onLogout }) {
+export default function Sidebar({ onLogout }) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  const isActive = (path) =>
+    pathname === path || (path !== '/dashboard' && pathname.startsWith(path));
+
   return (
     <aside className="sidebar">
       {/* Logo */}
@@ -37,9 +43,9 @@ export default function Sidebar({ activePage, onNavigate, onLogout }) {
           const Icon = n.icon;
           return (
             <button
-              key={n.id}
-              className={`nav-btn${activePage === n.id ? ' active' : ''}`}
-              onClick={() => onNavigate(n.id)}
+              key={n.path}
+              className={`nav-btn${isActive(n.path) ? ' active' : ''}`}
+              onClick={() => navigate(n.path)}
             >
               <Icon size={18} className="nav-icon" style={{ marginRight: 10 }} />
               {n.label}
@@ -50,13 +56,10 @@ export default function Sidebar({ activePage, onNavigate, onLogout }) {
 
       {/* Footer */}
       <div className="sidebar-foot">
-        {/* Network badge */}
         <div className="net-badge" style={{ marginBottom: 10 }}>
           <span className="dot" />
           Sepolia Testnet
         </div>
-
-        {/* Logout */}
         {onLogout && (
           <motion.button
             className="logout-btn"

@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Bell, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { getAllFiles } from '../utils/api';
 
-export default function NotificationDropdown({ walletAddress, onNavigate }) {
+export default function NotificationDropdown({ walletAddress }) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const dropdownRef = useRef(null);
+  const navigate = useNavigate();
 
   // --- Security Audit Logic ---
   const runSecurityAudit = useCallback(async () => {
@@ -23,7 +25,7 @@ export default function NotificationDropdown({ walletAddress, onNavigate }) {
             type: 'critical',
             title: 'Tamper Detected',
             text: `${f.filename} signature mismatch!`,
-            page: 'verify'
+            page: '/verify'
           });
         }
         // 2. Expiry Check
@@ -33,7 +35,7 @@ export default function NotificationDropdown({ walletAddress, onNavigate }) {
             type: 'info',
             title: 'File Expired',
             text: `${f.filename} is no longer valid.`,
-            page: 'my-files'
+            page: '/my-files'
           });
         }
       });
@@ -45,7 +47,7 @@ export default function NotificationDropdown({ walletAddress, onNavigate }) {
           type: 'warning',
           title: 'Storage Full',
           text: 'Vault capacity over 80%. Clean up files.',
-          page: 'my-files'
+          page: '/my-files'
         });
       }
 
@@ -124,7 +126,7 @@ export default function NotificationDropdown({ walletAddress, onNavigate }) {
               notifications.map((n) => (
                 <div
                   key={n.id}
-                  onClick={() => { if (onNavigate) onNavigate(n.page); setIsOpen(false); }}
+                  onClick={() => { navigate(n.page); setIsOpen(false); }}
                   style={{
                     padding: '12px 15px', borderBottom: '1px solid var(--border)',
                     display: 'flex', gap: '12px', cursor: 'pointer',
