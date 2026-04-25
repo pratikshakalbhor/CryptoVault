@@ -20,7 +20,6 @@ func main() {
 	}
 
 	// Debug — env variables print kara
-	log.Println("MONGODB_URI:", os.Getenv("MONGODB_URI"))
 	log.Println("PORT:", os.Getenv("PORT"))
 
 	// MongoDB connect karo

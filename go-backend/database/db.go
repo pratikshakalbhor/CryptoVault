@@ -19,16 +19,24 @@ func ConnectDB() {
 	}
 
 	// MongoDB connect karo
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+	clientOptions := options.Client().
+		ApplyURI(mongoURI).
+		SetConnectTimeout(30 * time.Second).
+		SetServerSelectionTimeout(30 * time.Second)
+
+	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
 		log.Fatal("MongoDB connect error:", err)
 	}
 
 	// Connection test karo
-	err = client.Ping(ctx, nil)
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer pingCancel()
+	
+	err = client.Ping(pingCtx, nil)
 	if err != nil {
 		log.Fatal("MongoDB ping error:", err)
 	}

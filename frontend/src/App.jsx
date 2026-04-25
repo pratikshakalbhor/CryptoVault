@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './index.css';
 
@@ -30,7 +30,7 @@ function usePageTitle() {
 }
 
 // ── Auth-guarded layout (Sidebar + Topbar + Routes) ────────────────
-function AppLayout({ walletAddress, onLogout, theme, toggleTheme }) {
+function AppLayout({ walletAddress, onLogout }) {
   const title = usePageTitle();
 
   return (
@@ -40,8 +40,6 @@ function AppLayout({ walletAddress, onLogout, theme, toggleTheme }) {
         <Topbar
           walletAddress={walletAddress}
           title={title}
-          theme={theme}
-          toggleTheme={toggleTheme}
         />
         <div className="page">
           <Routes>
@@ -65,14 +63,6 @@ function AppLayout({ walletAddress, onLogout, theme, toggleTheme }) {
 // ── Root App ────────────────────────────────────────────────────────
 export default function App() {
   const [walletAddress, setWalletAddress] = useState(localStorage.getItem('wallet') || null);
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
   const handleLogout = () => {
     localStorage.removeItem('wallet');
@@ -104,8 +94,6 @@ export default function App() {
     <AppLayout
       walletAddress={walletAddress}
       onLogout={handleLogout}
-      theme={theme}
-      toggleTheme={toggleTheme}
     />
   );
 }

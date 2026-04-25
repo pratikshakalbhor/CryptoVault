@@ -26,11 +26,11 @@ function StatusBadge({ status }) {
 }
 
 export default function BlockchainLog({ walletAddress }) {
-  const [files,   setFiles]   = useState([]);
+  const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState('');
-  const [tab,     setTab]     = useState('uploads');
-  const [blocks,  setBlocks]  = useState(() =>
+  const [error, setError] = useState('');
+  const [tab, setTab] = useState('uploads');
+  const [blocks, setBlocks] = useState(() =>
     Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(3, '0'))
   );
 
@@ -60,8 +60,8 @@ export default function BlockchainLog({ walletAddress }) {
 
   // All files are "uploads"; for verifications we'd need a separate endpoint
   const uploads = files;
-  const verifs  = [];
-  const shown   = tab === 'uploads' ? uploads : verifs;
+  const verifs = [];
+  const shown = tab === 'uploads' ? uploads : verifs;
 
   return (
     <div className="page-inner">
