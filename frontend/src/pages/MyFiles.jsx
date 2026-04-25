@@ -15,14 +15,6 @@ const fmtSize = b =>
 const fmtDate = dt =>
   dt ? new Date(dt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
-function hashPill(hash) {
-  if (!hash) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
-  return (
-    <span className="hash-p" title={hash}>
-      {hash.slice(0, 8)}...{hash.slice(-6)}
-    </span>
-  );
-}
 
 function StatusBadge({ status, isExpired }) {
   if (isExpired) return (

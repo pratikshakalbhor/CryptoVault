@@ -522,7 +522,7 @@ export default function Verify({ onNotify, walletAddress }) {
               {isValid && (
                 <motion.button
                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                  onClick={() => generateCertificate(result)}
+                  onClick={() => generateCertificate({ ...result, walletAddress })}
                   style={{
                     flex: 1.5, height: 48, border: 'none', borderRadius: 10,
                     background: 'linear-gradient(135deg, #7F77DD, #378ADD)',

@@ -180,7 +180,7 @@ export default function Dashboard({ walletAddress }) {
               {files.slice(0, 5).map(f => {
                 const isExpired = f.isExpired || (f.expiryDate && new Date(f.expiryDate) < new Date());
                 return (
-                <tr key={f.fileId || f.id} className="tr-click" onClick={() => onNavigate('file-details', f)}>
+                <tr key={f.fileId || f.id} className="tr-click" onClick={() => navigate(`/files/${f.fileId || f.id}`)}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                       <span style={{ fontSize: 16, color: 'var(--accent-cyan)', flexShrink: 0 }}><FileText size={16} /></span>

@@ -144,3 +144,8 @@ export const getFileFromChain = async (fileId) => {
   const contract = new ethers.Contract(contractAddress, abi, provider);
   return contract.getFile(fileId);
 };
+
+export const getTxUrl = (txHash) => {
+  if (!txHash) return '';
+  return `https://sepolia.etherscan.io/tx/${txHash}`;
+};

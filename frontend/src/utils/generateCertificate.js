@@ -1,5 +1,5 @@
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 /**
  * Generates a professional PDF Proof of Integrity
@@ -33,15 +33,21 @@ export const generateCertificate = (data) => {
   doc.setFontSize(14);
   doc.text('Document Metadata', 14, 55);
 
+  const walletDisplay = data.walletAddress 
+    ? (data.walletAddress.length > 20 
+        ? `${data.walletAddress.slice(0, 10)}...${data.walletAddress.slice(-8)}` 
+        : data.walletAddress)
+    : 'Not Provided';
+
   const tableRows = [
     ['File Name', data.filename],
     ['File ID', data.fileId],
     ['Original Upload', new Date(data.uploadedAt).toLocaleString()],
-    ['Wallet Address', data.walletAddress],
+    ['Wallet Address', walletDisplay],
     ['Registry Status', 'ACTIVE & VERIFIED'],
   ];
 
-  doc.autoTable({
+  autoTable(doc, {
     startY: 60,
     head: [['Field', 'Value']],
     body: tableRows,
@@ -60,7 +66,7 @@ export const generateCertificate = (data) => {
     ['Verification Date', timestamp],
   ];
 
-  doc.autoTable({
+  autoTable(doc, {
     startY: nextY + 5,
     body: hashRows,
     styles: { font: 'courier', fontSize: 9 },
