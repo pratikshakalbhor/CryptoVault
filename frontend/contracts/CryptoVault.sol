@@ -23,6 +23,7 @@ contract CryptoVault {
         string  fileId;
         string  filename;
         string  fileHash;
+        string  ipfsCID;
         string  encryptedHash;
         string  mongoDbRef;
         string  cloudinaryUrl;
@@ -83,6 +84,7 @@ contract CryptoVault {
         string memory _fileId,
         string memory _filename,
         string memory _fileHash,
+        string memory _ipfsCID,
         string memory _encryptedHash,
         string memory _mongoDbRef,
         string memory _cloudinaryUrl,
@@ -97,7 +99,7 @@ contract CryptoVault {
 
         files[_fileId] = FileRecord({
             fileId: _fileId, filename: _filename, fileHash: _fileHash,
-            encryptedHash: _encryptedHash, mongoDbRef: _mongoDbRef,
+            ipfsCID: _ipfsCID, encryptedHash: _encryptedHash, mongoDbRef: _mongoDbRef,
             cloudinaryUrl: _cloudinaryUrl, fileSize: _fileSize,
             timestamp: block.timestamp, owner: msg.sender,
             exists: true, isRevoked: false
@@ -142,11 +144,11 @@ contract CryptoVault {
     }
 
     function getFile(string memory _fileId) public view
-        returns (string memory, string memory, string memory, uint256, uint256, address, bool)
+        returns (string memory, string memory, string memory, string memory, uint256, uint256, address, bool)
     {
         require(files[_fileId].exists, "File not found");
         FileRecord memory f = files[_fileId];
-        return (f.fileId, f.filename, f.fileHash, f.fileSize, f.timestamp, f.owner, f.isRevoked);
+        return (f.fileId, f.filename, f.fileHash, f.ipfsCID, f.fileSize, f.timestamp, f.owner, f.isRevoked);
     }
 
     function quickVerify(string memory _fileId, string memory _currentHash)

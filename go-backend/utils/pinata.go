@@ -16,11 +16,15 @@ type PinataResponse struct {
   Timestamp string `json:"Timestamp"`
 }
 
-func UploadToPinata(fileData []byte, filename string) (string, error) {
+func UploadToPinata(fileData []byte, filename string) (string, string, error) {
   jwt := os.Getenv("PINATA_JWT")
   if jwt == "" {
-    // JWT nahi tar mock URL return karo
-    return fmt.Sprintf("https://gateway.pinata.cloud/ipfs/mock_%s", filename), nil
+    jwt = os.Getenv("PINATA_API_KEY")
+  }
+  if jwt == "" {
+    // Mock CID and URL
+    mockCID := "mock_cid_" + filename
+    return fmt.Sprintf("https://gateway.pinata.cloud/ipfs/%s", mockCID), mockCID, nil
   }
 
   // Multipart form banva
@@ -30,11 +34,11 @@ func UploadToPinata(fileData []byte, filename string) (string, error) {
   // File part add kara
   part, err := writer.CreateFormFile("file", filename)
   if err != nil {
-    return "", err
+    return "", "", err
   }
   _, err = io.Copy(part, bytes.NewReader(fileData))
   if err != nil {
-    return "", err
+    return "", "", err
   }
 
   // Metadata add kara
@@ -47,7 +51,7 @@ func UploadToPinata(fileData []byte, filename string) (string, error) {
   req, err := http.NewRequest("POST",
     "https://api.pinata.cloud/pinning/pinFileToIPFS", body)
   if err != nil {
-    return "", err
+    return "", "", err
   }
 
   req.Header.Set("Authorization", "Bearer "+jwt)
@@ -57,18 +61,18 @@ func UploadToPinata(fileData []byte, filename string) (string, error) {
   client := &http.Client{}
   resp, err := client.Do(req)
   if err != nil {
-    return "", err
+    return "", "", err
   }
   defer resp.Body.Close()
 
   // Response parse kara
   var pinataResp PinataResponse
   if err := json.NewDecoder(resp.Body).Decode(&pinataResp); err != nil {
-    return "", err
+    return "", "", err
   }
 
   if pinataResp.IpfsHash == "" {
-    return "", fmt.Errorf("pinata upload failed")
+    return "", "", fmt.Errorf("pinata upload failed")
   }
 
   gateway := os.Getenv("PINATA_GATEWAY")
@@ -76,5 +80,5 @@ func UploadToPinata(fileData []byte, filename string) (string, error) {
     gateway = "https://gateway.pinata.cloud"
   }
 
-  return fmt.Sprintf("%s/ipfs/%s", gateway, pinataResp.IpfsHash), nil
+  return fmt.Sprintf("%s/ipfs/%s", gateway, pinataResp.IpfsHash), pinataResp.IpfsHash, nil
 }

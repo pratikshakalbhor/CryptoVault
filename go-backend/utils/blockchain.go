@@ -14,23 +14,23 @@ import (
 )
 
 // FetchFileFromChain — Reads file record directly from Ethereum smart contract
-func FetchFileFromChain(fileId string) (string, error) {
+func FetchFileFromChain(fileId string) (string, string, error) {
 	rpcURL := os.Getenv("RPC_URL")
 	contractAddr := os.Getenv("CONTRACT_ADDRESS")
 
-	fmt.Println("[BLOCKCHAIN] Fetching for ID:", fileId)
+	fmt.Printf("[BLOCKCHAIN] Querying Contract: %s for FileID: '%s'\n", contractAddr, fileId)
 
 	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
 		fmt.Println("[BLOCKCHAIN] Dial error:", err)
-		return "", err
+		return "", "", err
 	}
 
 	// Load ABI
 	abiData, err := os.ReadFile("abi/abi.json")
 	if err != nil {
 		fmt.Println("[BLOCKCHAIN] ABI read error:", err)
-		return "", err
+		return "", "", err
 	}
 
 	var contractABI abi.ABI
@@ -39,7 +39,7 @@ func FetchFileFromChain(fileId string) (string, error) {
 		contractABI, err = abi.JSON(strings.NewReader(string(abiData)))
 		if err != nil {
 			fmt.Println("[BLOCKCHAIN] ABI parse error:", err)
-			return "", err
+			return "", "", err
 		}
 	}
 
@@ -47,7 +47,7 @@ func FetchFileFromChain(fileId string) (string, error) {
 	data, err := contractABI.Pack("getFile", fileId)
 	if err != nil {
 		fmt.Println("[BLOCKCHAIN] Pack error:", err)
-		return "", err
+		return "", "", err
 	}
 
 	to := common.HexToAddress(contractAddr)
@@ -59,32 +59,38 @@ func FetchFileFromChain(fileId string) (string, error) {
 	result, err := client.CallContract(context.Background(), msg, nil)
 	if err != nil {
 		fmt.Println("[BLOCKCHAIN] CallContract error:", err)
-		return "", err
+		return "", "", err
 	}
 
 	// Unpack results
 	unpacked, err := contractABI.Unpack("getFile", result)
 	if err != nil {
 		fmt.Println("[BLOCKCHAIN] Unpack error:", err)
-		return "", err
+		return "", "", err
 	}
 
-	// The third return value is the fileHash (index 2)
-	if len(unpacked) > 2 {
-		hash, ok := unpacked[2].(string)
-		if ok {
-			fmt.Println("[BLOCKCHAIN] Found hash:", hash)
-			return hash, nil
+	fmt.Println("🔎 Fetching from blockchain:", fileId)
+
+	if len(unpacked) > 3 {
+		hash, ok1 := unpacked[2].(string)
+		cid, ok2 := unpacked[3].(string)
+		if ok1 && ok2 {
+			if hash == "" {
+				fmt.Println("⚠️ Blockchain record is EMPTY for:", fileId)
+				// Return error so the verification handler knows it's NOT_SYNCED
+				return "", "", fmt.Errorf("no blockchain record found for fileId: %s", fileId)
+			}
+			fmt.Println("📦 Returned hash:", hash)
+			return hash, cid, nil
 		}
 	}
 
-	fmt.Println("[BLOCKCHAIN] No hash found in unpacked data")
-	return "", nil
+	return "", "", fmt.Errorf("failed to unpack blockchain data for fileId: %s", fileId)
 }
 
 // Keep for compatibility if needed elsewhere, but refactored to use FetchFileFromChain
 func VerifyOnChain(fileId, expectedHash string) (bool, string, error) {
-	chainHash, err := FetchFileFromChain(fileId)
+	chainHash, _, err := FetchFileFromChain(fileId)
 	if err != nil {
 		return false, "", err
 	}

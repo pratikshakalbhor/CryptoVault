@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { uploadFile } from '../utils/api';
 import { sealFileOnChain } from '../utils/blockchain';
-import { Activity, AlertTriangle, CheckCircle, Circle, Cloud, FileText, Folder, Link, Lock, RefreshCw, ShieldCheck, UploadCloud, X } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, Circle, Cloud, FileText, Folder, Link, Lock, RefreshCw, UploadCloud, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 
 const STEPS = [
@@ -28,7 +30,6 @@ export default function Upload({ walletAddress }) {
   const [activeStep, setActiveStep]= useState(null);
   const [progress, setProgress]    = useState(0);
   const [result, setResult]        = useState(null);
-  const [error, setError]          = useState('');
   const [chainStatus, setChainStatus] = useState(''); // 'waiting' | 'confirmed' | 'rejected'
   const fileRef = useRef();
 
@@ -38,7 +39,7 @@ export default function Upload({ walletAddress }) {
     const f = e.dataTransfer.files[0];
     if (f) { 
       console.log("File selected via Drop:", f);
-      setFile(f); setError(''); setResult(null); 
+      setFile(f); setResult(null); 
     }
   };
   
@@ -46,7 +47,7 @@ export default function Upload({ walletAddress }) {
     const f = e.target.files[0];
     if (f) { 
       console.log("File selected via Picker:", f);
-      setFile(f); setError(''); setResult(null); 
+      setFile(f); setResult(null); 
     }
   };
 
@@ -56,7 +57,7 @@ export default function Upload({ walletAddress }) {
 
     // MetaMask check
     if (!window.ethereum) {
-      setError('MetaMask is not installed. Please install it to upload files to the Blockchain.');
+      toast.error('MetaMask is not installed. Please install it to upload files to the Blockchain.');
       return;
     }
 
@@ -64,7 +65,6 @@ export default function Upload({ walletAddress }) {
     setStepsDone([]);
     setActiveStep(null);
     setProgress(0);
-    setError('');
     setChainStatus('');
 
     try {
@@ -114,10 +114,10 @@ export default function Upload({ walletAddress }) {
         if (chainErr.code === 'USER_REJECTED') {
           // Graceful rejection — don't crash, show warning
           setChainStatus('rejected');
-          setError('⚠️ MetaMask transaction rejected. Your file was saved to backend, but NOT sealed on-chain.');
+          toast.error('⚠️ MetaMask transaction rejected. Your file was saved to backend, but NOT sealed on-chain.');
         } else {
           setChainStatus('rejected');
-          setError(`Blockchain error: ${chainErr.message}`);
+          toast.error(`Blockchain error: ${chainErr.message}`);
         }
         // File still saved in backend — continue to 'done' with null txHash
       }
@@ -135,7 +135,7 @@ export default function Upload({ walletAddress }) {
     } catch (err) {
       console.error('Upload failed:', err);
       setPhase('idle');
-      setError(err.message || 'Upload failed. Please try again.');
+      toast.error(err.message || 'Upload failed. Please try again.');
       setStepsDone([]);
       setActiveStep(null);
       setProgress(0);
@@ -146,7 +146,7 @@ export default function Upload({ walletAddress }) {
   const reset = () => {
     setPhase('idle'); setFile(null); setExpiryDate('');
     setStepsDone([]); setActiveStep(null); setProgress(0);
-    setResult(null); setError(''); setChainStatus('');
+    setResult(null); setChainStatus('');
   };
 
   /* ── UI phases ── */
@@ -197,21 +197,19 @@ export default function Upload({ walletAddress }) {
         <div className="ph"><div><h1>Upload File</h1><p>Encrypt, store, and register on the blockchain</p></div></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
           {sealed ? (
-            <div className="vr valid" style={{ textAlign: 'center' }}>
-              <div className="vr-ico"><CheckCircle size={18} /></div>
-              <h2>✅ File uploaded successfully!</h2>
-              <p>You can verify this file anytime in the future to check if it has been modified.</p>
-            </div>
+            <motion.div className="success-modal vr valid" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={{ textAlign: 'center', padding: '24px' }}>
+              <h3 style={{ fontSize: '1.4rem', marginBottom: '8px' }}>✅ File uploaded successfully!</h3>
+              <p style={{ color: 'var(--text-muted)' }}>You can verify this file anytime in the future to check if it has been modified.</p>
+              <div className="btn-group" style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '20px' }}>
+                <button className="btn btn-p" onClick={() => navigate('/verify?id=' + (file_.fileId || file_.id))}>Verify This File</button>
+                <button className="btn btn-s" onClick={() => navigate('/my-files')}>View My Files</button>
+              </div>
+            </motion.div>
           ) : (
             <div className="vr" style={{ textAlign: 'center', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)' }}>
               <div className="vr-ico" style={{ color: '#fbbf24' }}><AlertTriangle size={18} /></div>
               <h2 style={{ color: '#fbbf24' }}>File Saved (Not Sealed) ⚠️</h2>
               <p style={{ color: 'var(--text-secondary)' }}>File stored in backend, but MetaMask transaction was not confirmed.</p>
-            </div>
-          )}
-          {error && (
-            <div className="error-box" style={{ marginBottom: 8 }}>
-              <AlertTriangle size={16} /> {error}
             </div>
           )}
           <div className="card">
@@ -267,11 +265,7 @@ export default function Upload({ walletAddress }) {
           )}
 
           <div className="btn-row" style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-            <button className="btn btn-s" style={{ flex: 1 }} onClick={() => navigate('/verify?id=' + (file_.fileId || file_.id))}>
-              <ShieldCheck size={18} /> Verify This File
-            </button>
-            <button className="btn btn-p" style={{ flex: 1 }} onClick={() => navigate('/my-files')}>View My Files</button>
-            <button className="btn btn-g" style={{ flex: 0.5 }} onClick={reset}>Upload Another</button>
+            <button className="btn btn-g" style={{ flex: 1 }} onClick={reset}>Upload Another</button>
           </div>
         </div>
       </div>
@@ -282,12 +276,6 @@ export default function Upload({ walletAddress }) {
   return (
     <div className="page-inner" style={{ maxWidth: 640 }}>
       <div className="ph"><div><h1>Upload File</h1><p>Encrypt, store, and register on the blockchain</p></div></div>
-
-      {error && (
-        <div className="error-box" style={{ marginBottom: 14 }}>
-          <AlertTriangle size={18} /> {error}
-        </div>
-      )}
 
       <div
         className={`dz${drag ? ' on' : ''}`}

@@ -155,6 +155,11 @@
 			},
 			{
 				"internalType": "string",
+				"name": "_ipfsCID",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
 				"name": "_encryptedHash",
 				"type": "string"
 			},
@@ -263,6 +268,11 @@
 		],
 		"name": "getFile",
 		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			},
 			{
 				"internalType": "string",
 				"name": "",

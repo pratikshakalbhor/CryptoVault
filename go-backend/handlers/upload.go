@@ -47,15 +47,16 @@ func UploadFile(c *gin.Context) {
 	}
 
 	// Upload to IPFS
-	ipfsURL, err := utils.UploadToPinata(encryptedBytes, header.Filename)
+	ipfsURL, ipfsCID, err := utils.UploadToPinata(encryptedBytes, header.Filename)
 	if err != nil {
 		ipfsURL = "mock_url"
+		ipfsCID = "mock_cid_" + header.Filename
 	}
 
-	// Mock blockchain TX
-	txHash := utils.MockTxHash(fileHash)
+	// Mock blockchain TX — Using IPFS CID as the source of truth
+	txHash := utils.MockTxHash(ipfsCID)
 
-	fileID := fmt.Sprintf("FILE-%s%d", randomString(6), time.Now().Unix())
+	fileID := fmt.Sprintf("FILE-%d", time.Now().Unix())
 	publicID := randomString(10)
 
 	collection := database.GetCollection("files")
@@ -83,14 +84,18 @@ func UploadFile(c *gin.Context) {
 				bson.M{
 					"$set": bson.M{
 						"originalHash": fileHash,
+						"ipfsCID":      ipfsCID,
+						"encryptedURL":  ipfsURL,
 						"txHash":       txHash,
+						"fileSize":     header.Size,
+						"mimeType":     header.Header.Get("Content-Type"),
 						"version":      newVersion,
 						"uploadedAt":   time.Now(),
 					},
 					"$push": bson.M{
 						"versions": models.VersionRecord{
 							VersionNumber: newVersion,
-							Hash:          fileHash,
+							Hash:          ipfsCID, // Store CID in versions too
 							TxHash:        txHash,
 							Timestamp:     time.Now(),
 							Note:          versionNote,
@@ -109,7 +114,9 @@ func UploadFile(c *gin.Context) {
 			Filename:      header.Filename,
 			OriginalHash:  fileHash,
 			EncryptedURL:  ipfsURL,
+			IpfsCID:       ipfsCID,
 			FileSize:      header.Size,
+			MimeType:      header.Header.Get("Content-Type"),
 			WalletAddress: wallet,
 			TxHash:        txHash,
 			Status:        "valid",
@@ -132,7 +139,8 @@ func UploadFile(c *gin.Context) {
 		"publicId": publicID,
 		"filename": header.Filename,
 		"fileHash": fileHash,
-		"fileSize": header.Size, //  important
+		"ipfsCID":  ipfsCID,
+		"fileSize": header.Size,
 		"txHash":   txHash,
 	})
 }
