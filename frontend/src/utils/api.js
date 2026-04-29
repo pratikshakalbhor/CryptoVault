@@ -182,6 +182,26 @@ export const updateVisibility = async (fileId, visibility, sharedWith = []) => {
 };
 
 // ─────────────────────────────────────────
+// Trash & Restore Features
+// ─────────────────────────────────────────
+export const trashFile = async (fileId) => {
+  return apiFetch(`/files/${fileId}`, { method: "DELETE" });
+};
+
+export const restoreFile = async (fileId) => {
+  return apiFetch(`/files/${fileId}/restore`, { method: "POST" });
+};
+
+export const deleteFilePermanently = async (fileId) => {
+  return apiFetch(`/files/${fileId}/permanent`, { method: "DELETE" });
+};
+
+export const getTrashFiles = async (walletAddress) => {
+  const query = walletAddress ? `?wallet=${walletAddress}` : "";
+  return apiFetch(`/files/trash/all${query}`);
+};
+
+// ─────────────────────────────────────────
 // 6. GET STATS
 // GET /api/stats
 // ─────────────────────────────────────────

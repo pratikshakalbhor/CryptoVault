@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 import '../styles/Verify.css';
 import { pageVariants, cardVariants, scalePop } from '../utils/animations';
 import { getTxUrl } from '../utils/blockchain';
@@ -8,8 +9,8 @@ import { generateCertificate } from '../utils/generateCertificate';
 import {
   ShieldCheck, AlertTriangle, CheckCircle, Clipboard,
   ExternalLink, FileText, FileImage, FileCode, FileArchive,
-  RefreshCw, Trash2, Loader2, Database, Link as LinkIcon,
-  ChevronRight, FileCheck, Search, UploadCloud
+  RefreshCw, Loader2, Database, Link as LinkIcon,
+  ChevronRight, FileCheck, Search, UploadCloud, Download
 } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -27,27 +28,64 @@ const getFileIcon = (file) => {
   return <FileText size={24} />;
 };
 
+const DetailedAuditReport = ({ result, onRestore }) => {
+  if ((result.status !== 'TAMPERED' && result.status !== 'LOCAL_MISMATCH_PENDING_SYNC') || !result.comparison) return null;
+
+  return (
+    <motion.div className="v-card audit-report-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+      style={{ marginBottom: 20, borderLeft: '4px solid var(--accent-red)' }}>
+      <div className="pf-section-label" style={{ marginBottom: 16, color: 'var(--accent-red)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <AlertTriangle size={16} /> Audit Findings
+      </div>
+      <div className="audit-explanation" style={{ padding: 12, background: 'rgba(239, 68, 68, 0.05)', borderRadius: 8, fontSize: 14, color: 'var(--text-white)', lineHeight: 1.5 }}>
+        Change detected: File size changed from {fmtSize(result.comparison.originalFileSize)} to {fmtSize(result.comparison.currentFileSize)}, indicating the file might have been tampered with.
+      </div>
+      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onRestore} className="restore-btn-style"
+        style={{
+          marginTop: 24,
+          padding: '14px 28px',
+          background: 'var(--accent-red)',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 12,
+          fontWeight: 700,
+          fontSize: 14,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+          width: '100%',
+          boxShadow: '0 8px 25px rgba(239, 68, 68, 0.4)',
+          textTransform: 'uppercase',
+          letterSpacing: '1px'
+        }}
+      >
+        <Download size={18} /> Restore Original File
+      </motion.button>
+    </motion.div>
+  );
+};
+
 export default function Verify({ onNotify, walletAddress }) {
   const location = useLocation();
+  const [fileId, setFileId] = useState(null);
   const [file, setFile] = useState(null);
   const [drag, setDrag] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
   const [activeStep, setActiveStep] = useState(0);
   const [copied, setCopied] = useState('');
-  const [fileIdParam, setFileIdParam] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Handle query parameter ?id=...
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const id = params.get('id');
-    if (id) {
-      setFileIdParam(id);
-      // If we have an ID but no file, maybe show a hint to drop the file for that ID
-    }
+    const id = params.get("id");
+    console.log("FileId from URL:", id);
+    setFileId(id);
   }, [location]);
+
+  console.log("FULL URL:", window.location.href);
 
   const STEPS = [
     { n: 1, label: 'Reading File...', icon: <Search size={16} /> },
@@ -59,33 +97,35 @@ export default function Verify({ onNotify, walletAddress }) {
     e.preventDefault();
     setDrag(false);
     const f = e.dataTransfer.files[0];
-    if (f) { setFile(f); setResult(null); setError(''); }
+    if (f) { setFile(f); setResult(null); }
   };
 
-  const generateHash = async (file) => {
-    const arrayBuffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  };
+
 
   const doVerify = async () => {
+    if (loading) return;
     if (!file) return;
+
+    if (!fileId || fileId === 'null' || fileId === 'undefined') {
+      toast('No File ID provided. Falling back to filename search...', { icon: '🔍' });
+    }
+
     setLoading(true);
-    setError('');
     setActiveStep(1);
 
     try {
-      // Step 1: Compute Hash
-      await generateHash(file);
+      // Step 1: Initialize
       await delay(800);
       setActiveStep(2);
 
       // Step 2: Prepare Request
-      console.log("Sending fileId:", fileIdParam);
       const formData = new FormData();
       formData.append('file', file);
-      if (fileIdParam) formData.append('fileId', fileIdParam);
+      
+      if (fileId && fileId !== 'null' && fileId !== 'undefined') {
+        formData.append('fileId', fileId);
+        console.log("Sending fileId:", fileId);
+      }
 
       // Step 3: Backend Verification
       const response = await fetch(
@@ -101,20 +141,22 @@ export default function Verify({ onNotify, walletAddress }) {
 
       setResult(data);
 
-      if (typeof onNotify === 'function') {
-        const status = data.status?.toUpperCase();
-        if (status === 'VALID') {
-          onNotify('✅ File integrity verified!', 'success');
-        } else if (status === 'TAMPERED') {
-          onNotify('⚠️ Tamper detected!', 'error');
-        } else if (status === 'NOT_SYNCED') {
-          onNotify('🟠 Not synced with blockchain', 'warning');
-        } else if (status === 'NOT_FOUND' || status === 'NOT_REGISTERED') {
-          onNotify('🚫 File not found in system', 'info');
-        }
+      const status = data.status?.toUpperCase();
+      if (status === 'VALID') {
+        toast.success('✅ File integrity verified!');
+      } else if (status === 'TAMPERED') {
+        toast.error('🚨 Security Alert: Modification Detected!', { duration: 5000, style: { background: '#7f1d1d', color: '#fca5a5', border: '1px solid #ef4444' } });
+      } else if (status === 'DATABASE_COMPROMISED') {
+        toast.error('🚨 DATABASE BREACH! Blockchain proof does not match DB.', { duration: 6000, style: { background: '#7f1d1d', color: '#fca5a5', border: '1px solid #ef4444' } });
+      } else if (status === 'NOT_SYNCED') {
+        toast('🟠 Not synced with blockchain', { icon: '⏳' });
+      } else if (status === 'LOCAL_MISMATCH_PENDING_SYNC') {
+        toast('🟠 Local mismatch detected (awaiting sync)', { icon: '⏳' });
+      } else if (status === 'NOT_FOUND' || status === 'NOT_REGISTERED') {
+        toast('🚫 File not found in system', { icon: '🔍' });
       }
     } catch (err) {
-      setError(err.message || 'Verification failed. Please try again.');
+      toast.error(err.message || 'Verification failed. Please try again.');
     } finally {
       setLoading(false);
       setActiveStep(0);
@@ -125,7 +167,19 @@ export default function Verify({ onNotify, walletAddress }) {
   const reset = () => {
     setFile(null);
     setResult(null);
-    setError('');
+  };
+
+  const handleRestore = () => {
+    if (!result) return;
+    // Primary: use blockchainCID from the smart contract for trustless recovery
+    const cid = result.blockchainCID;
+    if (!cid || cid.startsWith('mock_')) {
+      toast.error('No authentic IPFS CID found on the blockchain.');
+      return;
+    }
+    const gateway = process.env.REACT_APP_IPFS_GATEWAY || 'https://gateway.pinata.cloud';
+    const url = `${gateway}/ipfs/${cid}`;
+    window.open(url, '_blank');
   };
 
   const copyText = (text, key) => {
@@ -137,58 +191,66 @@ export default function Verify({ onNotify, walletAddress }) {
   const shortHash = (h) => h ? `${h.slice(0, 14)}...${h.slice(-10)}` : '—';
 
   const getStatusConfig = () => {
-    // Deriving status based on user's requested logic
-    let status = (result?.status || 'UNKNOWN').toUpperCase();
-    
-    const currentHash = result?.currentHash;
-    const originalHash = result?.originalHash;
-    const blockchainHash = result?.blockchainHash;
+    const status = (result?.status || 'UNKNOWN').toUpperCase();
 
-    if (result) {
-      if (status === 'NOT_FOUND' || status === 'NOT_REGISTERED') {
-        // Keep as NOT_FOUND
-      } else if (!blockchainHash) {
-        status = 'NOT_SYNCED';
-      } else if (currentHash !== originalHash) {
-        status = 'TAMPERED';
-      } else if (currentHash === originalHash) {
-        status = 'VALID';
-      }
-    }
-
-    console.log("[VERIFY UI] Derived Status:", status, { currentHash, originalHash, blockchainHash });
+    console.log("[VERIFY UI] Status:", status);
 
     switch (status) {
       case 'VALID':
         return {
           class: 'valid',
-          badge: 'Verified Authentic',
+          badge: 'Verified',
           title: '✔ This file is safe and unchanged',
-          desc: 'We have confirmed this file matches its official record. No changes were detected.',
+          desc: 'We have confirmed that this file matches the original record. No changes have been made to it.',
           color: 'var(--accent-teal)',
-          icon: <ShieldCheck size={48} />,
+          icon: <CheckCircle size={48} />,
           bg: 'rgba(45, 212, 191, 0.1)',
           shadow: '0 0 30px rgba(45, 212, 191, 0.2)'
         };
       case 'TAMPERED':
+      case 'DATABASE_COMPROMISED':
         return {
           class: 'tampered',
-          badge: 'Modification Detected',
+          badge: 'Modified',
           title: '⚠ This file has been modified',
-          desc: 'Warning: This file does not match the original record. It may have been edited or corrupted.',
+          desc: 'Warning: This file does not match the original record. It is likely that it has been altered or tampered with.',
           color: 'var(--accent-red)',
           icon: <AlertTriangle size={48} />,
           bg: 'rgba(239, 68, 68, 0.1)',
           shadow: '0 0 30px rgba(239, 68, 68, 0.2)'
         };
       case 'NOT_SYNCED':
+        // DB verified asel tar VALID dakhva
+        if (result?.dbVerified === true || result?.isMatch === true) {
+          return {
+            class: 'valid',
+            badge: 'DB Verified ✓',
+            title: '✔ This file is Authentic',
+            desc: 'File matches database record. Blockchain sync is still pending — this does not affect authenticity.',
+            color: 'var(--accent-teal)',
+            icon: <CheckCircle size={48} />,
+            bg: 'rgba(45, 212, 191, 0.1)',
+            shadow: '0 0 30px rgba(45, 212, 191, 0.2)'
+          };
+        }
         return {
           class: 'warning',
           badge: 'Sync Pending',
-          title: '⚠ File not fully verified on blockchain',
-          desc: 'The file is in our records but the final blockchain proof is still being processed. Please check back shortly.',
+          title: '⏳ Blockchain sync in progress...',
+          desc: 'File is in our records but blockchain proof is still being processed. Please check back shortly.',
           color: '#F59E0B',
-          icon: <RefreshCw size={48} />,
+          icon: <Loader2 size={48} className="spin" />,
+          bg: 'rgba(245, 158, 11, 0.1)',
+          shadow: '0 0 30px rgba(245, 158, 11, 0.2)'
+        };
+      case 'LOCAL_MISMATCH_PENDING_SYNC':
+        return {
+          class: 'warning',
+          badge: 'Pending',
+          title: '⚠ File not fully verified on blockchain',
+          desc: 'The file is in our records, but the final verification process is not yet complete. Please check again in a while.',
+          color: '#F59E0B',
+          icon: <Loader2 size={48} className="spin" />,
           bg: 'rgba(245, 158, 11, 0.1)',
           shadow: '0 0 30px rgba(245, 158, 11, 0.2)'
         };
@@ -196,49 +258,42 @@ export default function Verify({ onNotify, walletAddress }) {
       case 'NOT_REGISTERED':
         return {
           class: 'grey',
-          badge: 'Not Found',
+          badge: 'Unknown',
           title: '🚫 This file was not found in the system',
-          desc: 'We could not find any record of this file. Please make sure you are uploading the correct file.',
+          desc: 'We couldn\'t find any record of this file. Please make sure you are uploading the correct file.',
           color: '#9CA3AF',
           icon: <Search size={48} />,
           bg: 'rgba(156, 163, 175, 0.1)',
           shadow: '0 0 30px rgba(156, 163, 175, 0.2)'
         };
       default:
-        // Fallback for safety, but try to avoid UNKNOWN
-        return {
-          class: 'tampered',
-          badge: 'Status Error',
-          title: 'Unable to Verify',
-          desc: 'We encountered an issue determining the status. Please try re-uploading the file.',
-          color: 'var(--accent-red)',
-          icon: <AlertTriangle size={48} />,
-          bg: 'rgba(239, 68, 68, 0.1)',
-          shadow: '0 0 30px rgba(239, 68, 68, 0.2)'
-        };
+        return { class: 'grey', badge: 'Error', title: 'Unable to Verify', desc: 'Some technical error occurred.', color: '#9CA3AF', icon: <AlertTriangle size={48} />, shadow: '0 0 30px rgba(156, 163, 175, 0.2)' };
     }
   };
 
   const statusConfig = result ? getStatusConfig() : null;
-  const isValid = result?.status?.toUpperCase() === 'VALID';
+  const isValid = 
+    result?.status?.toUpperCase() === 'VALID' ||
+    result?.isMatch === true ||
+    result?.dbVerified === true;
 
   return (
     <motion.div className="verify-container" variants={pageVariants} initial="initial" animate="animate">
 
-      {/* Page Header */}
+      {/* 1. HEADER INSTRUCTION */}
       <div className="ph">
         <div>
-          <h1>🔍 Verify Your File</h1>
-          <p style={{ marginTop: 8 }}>Upload your file again to check if it has been changed or tampered with.</p>
-          <div style={{ display: 'flex', gap: 16, marginTop: 12, fontSize: 13 }}>
-            <span style={{ color: 'var(--accent-teal)' }}>✔ If the file is the same → It will be verified</span>
-            <span style={{ color: 'var(--accent-red)' }}>⚠ If the file was changed → It will be marked as modified</span>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800 }}>🔍 Verify Your File</h1>
+          <p style={{ marginTop: 8, color: 'var(--text-muted)' }}>
+            Upload your file again to check if it has been changed or tampered with.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 16, fontSize: 13, padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px' }}>
+            <span style={{ color: 'var(--accent-teal)', fontWeight: 600 }}>✔ If the file is the same → It will be verified</span>
+            <span style={{ color: 'var(--accent-red)', fontWeight: 600 }}>⚠ If the file was changed → It will be marked as modified</span>
           </div>
         </div>
         {(file || result) && (
-          <button className="ref-btn" onClick={reset}>
-            <RefreshCw size={14} /> Reset
-          </button>
+          <button className="ref-btn" onClick={reset}><RefreshCw size={14} /> Reset</button>
         )}
       </div>
 
@@ -261,8 +316,6 @@ export default function Verify({ onNotify, walletAddress }) {
               </div>
             </div>
 
-            {error && <div className="error-box" style={{ marginBottom: 20 }}>{error}</div>}
-
             {!loading ? (
               <div className="v-card">
                 <div
@@ -274,47 +327,51 @@ export default function Verify({ onNotify, walletAddress }) {
                 >
                   <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={e => {
                     const f = e.target.files[0];
-                    if (f) { setFile(f); setResult(null); setError(''); }
+                    if (f) { setFile(f); setResult(null); }
                   }} />
 
                   {file ? (
                     <div className="v-file-preview">
-                      <div className="v-file-icon">
-                        {getFileIcon(file)}
-                      </div>
+                      <div className="v-file-icon">{getFileIcon(file)}</div>
                       <div className="v-file-info">
                         <div className="v-file-name">{file.name}</div>
-                        <div className="v-file-meta">{fmtSize(file.size)} · Ready for cryptographic audit</div>
+                        <div className="v-file-meta">
+                          {fmtSize(file.size)} · Ready to check
+                          {(!fileId || fileId === 'null') && (
+                            <div style={{ color: '#F59E0B', fontSize: 10, marginTop: 4, fontWeight: 600 }}>
+                              ⚠ For full verification, open file from "My Files"
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <button className="v-remove-btn" onClick={e => { e.stopPropagation(); setFile(null); }}>
-                        <Trash2 size={12} />
-                      </button>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                      <div className="v-file-icon" style={{ width: 64, height: 64, color: 'var(--accent-cyan)', background: 'rgba(0, 212, 255, 0.05)' }}>
-                        <UploadCloud size={32} />
+                    /* 2. EMPTY STATE MESSAGE */
+                    <div style={{ textAlign: 'center', padding: '20px' }}>
+                      <div className="v-file-icon" style={{ margin: '0 auto 16px', width: 60, height: 60, background: 'rgba(0, 212, 255, 0.05)' }}>
+                        <UploadCloud size={30} />
                       </div>
-                      <div style={{ fontSize: 16, fontWeight: 700 }}>No file selected</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>No file selected</div>
+                      <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
                         👉 Choose the same file you uploaded earlier to verify its integrity
                       </div>
-                      {fileIdParam && (
+                      {(!fileId || fileId === 'null') && (
+                        <div style={{ marginTop: 12, fontSize: 11, padding: '6px 14px', background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B', borderRadius: 8, border: '1px solid rgba(245, 158, 11, 0.2)', fontWeight: 600 }}>
+                          ⚠ For full verification, open file from "My Files"
+                        </div>
+                      )}
+                      {fileId && fileId !== 'null' && (
                         <div style={{ marginTop: 10, fontSize: 11, padding: '4px 12px', background: 'rgba(167, 139, 250, 0.1)', color: '#A78BFA', borderRadius: 20 }}>
-                          Auditing for File ID: {fileIdParam.slice(0, 8)}...
+                          Auditing for File ID: {fileId.slice(0, 8)}...
                         </div>
                       )}
                     </div>
                   )}
                 </div>
 
-                <button
-                  className="v-btn-execute"
-                  disabled={!file}
-                  onClick={doVerify}
-                  title="Check if this file has been changed"
-                >
-                  <ShieldCheck size={20} />
+                {/* 3. BUTTON LABEL & 6. TOOLTIP */}
+                <button className="v-btn-execute" disabled={!file || loading} onClick={doVerify} title="Check if this file has been changed">
+                  {loading ? <Loader2 size={20} className="spin" /> : <ShieldCheck size={20} />}
                   Check File Integrity
                 </button>
               </div>
@@ -374,6 +431,35 @@ export default function Verify({ onNotify, walletAddress }) {
               <p className="v-verdict-desc">
                 {statusConfig.desc}
               </p>
+
+              {(result.status === 'DATABASE_COMPROMISED') && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleRestore}
+                  style={{
+                    marginTop: 24,
+                    padding: '14px 28px',
+                    background: 'var(--accent-red)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 12,
+                    fontWeight: 700,
+                    fontSize: 14,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 12,
+                    width: '100%',
+                    boxShadow: '0 8px 25px rgba(239, 68, 68, 0.4)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px'
+                  }}
+                >
+                  <Download size={18} /> Restore Authentic Version
+                </motion.button>
+              )}
             </div>
 
             <div className="v-hash-grid">
@@ -434,9 +520,17 @@ export default function Verify({ onNotify, walletAddress }) {
                     {result.blockchainHash ? 'AUTHENTIC' : 'NOT_SYNCED'}
                   </span>
                 </div>
+                {result.blockchainCID && (
+                  <div className="pf-info-row" style={{ gridColumn: 'span 2' }}>
+                    <span className="pf-info-key">Recovery Path</span>
+                    <span style={{ color: 'var(--accent-teal)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700 }}>
+                      <CheckCircle size={12} /> Blockchain Verified (IPFS)
+                    </span>
+                  </div>
+                )}
                 {result.txHash && result.txHash !== 'pending' && (
                   <div className="pf-info-row" style={{ gridColumn: 'span 2' }}>
-                    <span className="pf-info-key">Ledger Transaction</span>
+                    <span className="pf-info-key">Sepolia Transaction Hash</span>
                     <a href={getTxUrl(result.txHash)} target="_blank" rel="noreferrer" style={{ color: '#A78BFA', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
                       {result.txHash.slice(0, 16)}... <ExternalLink size={10} />
                     </a>
@@ -444,6 +538,24 @@ export default function Verify({ onNotify, walletAddress }) {
                 )}
               </div>
             </div>
+
+            {/* Heuristic Audit Report (Visible only if TAMPERED) */}
+            <DetailedAuditReport result={result} onRestore={handleRestore} />
+
+            {(result.status === 'NOT_SYNCED' || result.status === 'LOCAL_MISMATCH_PENDING_SYNC') && (
+              <div className="mt-4 p-4 border border-orange-500/50 bg-orange-500/10 rounded-lg" style={{ marginBottom: 20 }}>
+                <p className="text-orange-400 text-sm mb-2" style={{ color: '#FB923C', fontSize: 14, marginBottom: 8 }}>
+                  ⏳ Data is not yet synced on the blockchain...
+                </p>
+                <button 
+                  onClick={doVerify} 
+                  className="bg-orange-500 text-white px-4 py-2 rounded-md hover:bg-orange-600 transition"
+                  style={{ backgroundColor: '#F97316', color: '#fff', padding: '8px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Force Re-check
+                </button>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 12 }}>
               <button className="pf-btn pf-btn-ghost" style={{ flex: 1 }} onClick={reset}>

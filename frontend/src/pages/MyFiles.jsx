@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getAllFiles } from '../utils/api';
 import {
   Activity, AlertTriangle, CheckCircle, Copy, ExternalLink,
-  FileText, RefreshCw, Search, ShieldCheck, X, QrCode, Share2
+  FileText, RefreshCw, Search, ShieldCheck, X, QrCode, Share2, Trash2
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 
@@ -173,6 +173,7 @@ export default function MyFiles({ walletAddress }) {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [shareFile, setShareFile] = useState(null); // file being shared in modal
+  const [processing, setProcessing] = useState(null);
 
   const fetchFiles = useCallback(async () => {
     setLoading(true); setError('');
@@ -188,6 +189,21 @@ export default function MyFiles({ walletAddress }) {
 
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
+  const handleTrashFile = async (fileId) => {
+    if (!window.confirm("Move this file to trash?")) return;
+    setProcessing(fileId);
+    try {
+      // We need to import trashFile from api.js first
+      const { trashFile } = await import('../utils/api');
+      await trashFile(fileId);
+      setFiles(files.filter(f => f.fileId !== fileId && f.id !== fileId));
+    } catch (err) {
+      alert(err.message || "Failed to move to trash");
+    } finally {
+      setProcessing(null);
+    }
+  };
+
   // ── Filter ──
   const q = query.trim().toLowerCase();
   const filtered = files.filter(f =>
@@ -202,7 +218,14 @@ export default function MyFiles({ walletAddress }) {
           <h1>My Files</h1>
           <p>{files.length} file{files.length !== 1 ? 's' : ''} stored on blockchain</p>
         </div>
-        <button className="ref-btn" onClick={fetchFiles}><RefreshCw size={16} /> Refresh</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="ref-btn" onClick={() => navigate('/trash')} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
+            <Trash2 size={16} /> View Trash
+          </button>
+          <button className="ref-btn" onClick={fetchFiles}>
+            <RefreshCw size={16} className={loading ? 'spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-box"><AlertTriangle size={16} /> {error}</div>}
@@ -324,7 +347,11 @@ export default function MyFiles({ walletAddress }) {
                         <button
                           className="btn btn-g"
                           style={{ padding: '4px 10px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          onClick={e => { e.stopPropagation(); navigate(`/verify?id=${fileId}`); }}
+                          onClick={e => { 
+                            e.stopPropagation(); 
+                            console.log("Navigating with fileId:", f.fileId);
+                            navigate(`/verify?id=${f.fileId}`); 
+                          }}
                           title="Verify this file"
                         >
                           <ShieldCheck size={13} /> Verify
@@ -338,6 +365,17 @@ export default function MyFiles({ walletAddress }) {
                           title="Share public verification link"
                         >
                           <Share2 size={13} /> Share
+                        </button>
+
+                        {/* Trash Button */}
+                        <button
+                          className="btn btn-g"
+                          style={{ padding: '4px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--accent-red)' }}
+                          onClick={e => { e.stopPropagation(); handleTrashFile(fileId); }}
+                          disabled={processing === fileId}
+                          title="Move to Trash"
+                        >
+                          {processing === fileId ? <RefreshCw size={13} className="spin" /> : <Trash2 size={13} />}
                         </button>
                       </div>
                     </td>
