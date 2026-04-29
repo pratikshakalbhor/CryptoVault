@@ -19,7 +19,7 @@ func GetAllFiles(c *gin.Context) {
 	defer cancel()
 
 	// Optional wallet filter
-	filter := bson.M{}
+	filter := bson.M{"isDeleted": bson.M{"$ne": true}} // Soft-delete filter
 	wallet := c.Query("wallet")
 	if wallet != "" {
 		filter["walletAddress"] = wallet
@@ -122,10 +122,23 @@ func GetStats(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	total, _    := collection.CountDocuments(ctx, bson.M{})
-	valid, _    := collection.CountDocuments(ctx, bson.M{"status": "valid"})
-	tampered, _ := collection.CountDocuments(ctx, bson.M{"status": "tampered"})
-	revoked, _  := collection.CountDocuments(ctx, bson.M{"status": "revoked"})
+	total, _    := collection.CountDocuments(ctx, bson.M{"isDeleted": bson.M{"$ne": true}})
+	valid, _    := collection.CountDocuments(ctx, bson.M{"status": "valid", "isDeleted": bson.M{"$ne": true}})
+	tampered, _ := collection.CountDocuments(ctx, bson.M{"status": "tampered", "isDeleted": bson.M{"$ne": true}})
+	revoked, _  := collection.CountDocuments(ctx, bson.M{"status": "revoked", "isDeleted": bson.M{"$ne": true}})
+	trashed, _  := collection.CountDocuments(ctx, bson.M{"isDeleted": true})
+
+	// Fetch latest 5 verification logs
+	var recentLogs []models.FileRecord
+	opts := options.Find().SetSort(bson.M{"verifiedAt": -1}).SetLimit(5)
+	cursor, err := collection.Find(ctx, bson.M{"verifiedAt": bson.M{"$exists": true}, "isDeleted": bson.M{"$ne": true}}, opts)
+	if err == nil {
+		cursor.All(ctx, &recentLogs)
+		cursor.Close(ctx)
+	}
+	if recentLogs == nil {
+		recentLogs = []models.FileRecord{}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -134,7 +147,9 @@ func GetStats(c *gin.Context) {
 			Valid:    valid,
 			Tampered: tampered,
 			Revoked:  revoked,
+			Trashed:  trashed,
 		},
+		"recentLogs": recentLogs,
 	})
 }
 
@@ -178,5 +193,104 @@ func UpdateVisibility(c *gin.Context) {
 		"fileId":     fileID,
 		"visibility": body.Visibility,
 		"sharedWith": body.SharedWith,
+	})
+}
+
+// ─────────────────────────────────────────
+// Trash & Restore Features
+// ─────────────────────────────────────────
+
+func TrashFile(c *gin.Context) {
+	fileID := c.Param("id")
+
+	collection := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	update := bson.M{
+		"$set": bson.M{
+			"isDeleted": true,
+			"deletedAt": time.Now(),
+		},
+	}
+
+	res, err := collection.UpdateOne(ctx, bson.M{"fileId": fileID}, update)
+	if err != nil || res.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "File moved to trash"})
+}
+
+func RestoreFile(c *gin.Context) {
+	fileID := c.Param("id")
+
+	collection := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	update := bson.M{
+		"$set": bson.M{
+			"isDeleted": false,
+			"deletedAt": nil,
+		},
+	}
+
+	res, err := collection.UpdateOne(ctx, bson.M{"fileId": fileID}, update)
+	if err != nil || res.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "File restored"})
+}
+
+func PermanentDeleteFile(c *gin.Context) {
+	fileID := c.Param("id")
+
+	collection := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := collection.DeleteOne(ctx, bson.M{"fileId": fileID})
+	if err != nil || res.DeletedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "File deleted permanently"})
+}
+
+func GetTrashFiles(c *gin.Context) {
+	collection := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	filter := bson.M{"isDeleted": true}
+	wallet := c.Query("wallet")
+	if wallet != "" {
+		filter["walletAddress"] = wallet
+	}
+
+	opts := options.Find().SetSort(bson.M{"deletedAt": -1})
+	cursor, err := collection.Find(ctx, filter, opts)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Trash fetch error"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var files []models.FileRecord
+	cursor.All(ctx, &files)
+
+	if files == nil {
+		files = []models.FileRecord{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"count":   len(files),
+		"files":   files,
 	})
 }

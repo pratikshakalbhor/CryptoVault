@@ -17,8 +17,10 @@ type FileRecord struct {
 	PublicID      string          `json:"publicId"      bson:"publicId"` // Navin — public verification sathi
 	Filename      string          `json:"filename"      bson:"filename"`
 	OriginalHash  string          `json:"originalHash"  bson:"originalHash"`
-	EncryptedURL  string          `json:"encryptedUrl"  bson:"encryptedUrl"`
+	EncryptedURL  string          `json:"encryptedURL"  bson:"encryptedURL"`
+	IpfsCID       string          `json:"ipfsCID"       bson:"ipfsCID"` // Source of truth CID
 	FileSize      int64           `json:"fileSize"      bson:"fileSize"`
+	MimeType      string          `json:"mimeType"      bson:"mimeType"`
 	WalletAddress string          `json:"walletAddress" bson:"walletAddress"`
 	TxHash        string          `json:"txHash"        bson:"txHash"`
 	Status        string          `json:"status"        bson:"status"`
@@ -27,6 +29,8 @@ type FileRecord struct {
 	IsExpired     bool            `json:"isExpired"     bson:"isExpired"`
 	UploadedAt    time.Time       `json:"uploadedAt"    bson:"uploadedAt"`
 	VerifiedAt    *time.Time      `json:"verifiedAt"    bson:"verifiedAt"`
+	DeletedAt     *time.Time      `json:"deletedAt"     bson:"deletedAt"` // Soft delete timestamp
+	IsDeleted     bool            `json:"isDeleted"     bson:"isDeleted"` // Soft delete flag
 	Version       int             `json:"version"       bson:"version"`
 	Versions      []VersionRecord `json:"versions"      bson:"versions"` // Audit Trail sathi
 	Visibility    string          `json:"visibility"    bson:"visibility"`    // private, public, shared
@@ -41,4 +45,5 @@ type Stats struct {
 	Valid    int64 `json:"valid"`
 	Tampered int64 `json:"tampered"`
 	Revoked  int64 `json:"revoked"`
+	Trashed  int64 `json:"trashed"`
 }
