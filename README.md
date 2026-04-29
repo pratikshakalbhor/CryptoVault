@@ -1,6 +1,6 @@
-# 🔐 FileProof
+# 🔐 FileProof (ChainLock)
 
-> **Blockchain-Based Encrypted File Storage with Integrity Verification**
+> **Decentralized File Integrity System with Blockchain Auditing**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.19-blue.svg)](https://soliditylang.org/)
@@ -8,15 +8,6 @@
 [![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://mongodb.com/)
 [![Ethereum](https://img.shields.io/badge/Ethereum-Sepolia-purple.svg)](https://sepolia.etherscan.io/)
-[![Vercel](https://img.shields.io/badge/Deployed-Vercel-black.svg)](https://fileproof.vercel.app/)
-
----
-
-## 🌐 Live Demo
-
-**Frontend:** [fileproof.vercel.app](https://fileproof.vercel.app/)
-**Smart Contract:** [View on Etherscan](https://sepolia.etherscan.io/)
-**GitHub:** [github.com/pratikshakalbhor/ChainLock](https://github.com/pratikshakalbhor)
 
 ---
 
@@ -26,51 +17,43 @@ Cloud storage files can be **silently corrupted or tampered** without anyone kno
 
 | Problem | Description |
 |---------|-------------|
-| 🦠 **Bit Rot** | Hardware failures corrupt files over time — undetected |
-| 👤 **Insider Threats** | Cloud employees can modify database records silently |
-| 🔓 **No Proof** | Traditional databases cannot prove data was never changed |
-| ⚖️ **Legal Risk** | No immutable audit trail for compliance |
+| 🦠 **Bit Rot** | Hardware failures corrupt files over time — undetected. |
+| 👤 **Insider Threats** | Cloud employees or attackers can modify database records silently. |
+| 🔓 **No Proof** | Traditional databases cannot cryptographically prove data was never changed. |
+| ⚖️ **Legal Risk** | No immutable audit trail for legal and regulatory compliance. |
 
-> **Real Incident:** AIIMS Delhi 2023 — 40 million patient records compromised.
 > *"Wrong Data is more dangerous than No Data."*
 
 ---
 
 ## ✅ Solution — "Trust but Verify"
 
-FileProof uses a **3-Layer Security System**:
+FileProof uses a **Triple-Check Verification System** (Local vs. DB vs. Blockchain):
 
-```
-Layer 1 → AES-256 Encryption    File encrypted before upload
-Layer 2 → SHA-256 Hashing       Unique digital fingerprint generated
-Layer 3 → Blockchain Seal       Hash permanently stored on Ethereum
-```
+1. **Local Hash Generation**: Client/Backend generates a strict SHA-256 fingerprint of the file.
+2. **Database Record**: Metadata is securely stored in MongoDB.
+3. **Blockchain Seal**: The hash is permanently logged on the Ethereum Sepolia Testnet via our smart contract.
 
-### Verification Flow:
-```
-Re-upload same file
-        ↓
-New SHA-256 hash generated
-        ↓
-Compare with blockchain stored hash
-        ↓
-Match    → ✅ VALID    — File is authentic and unmodified
-Mismatch → ⚠️ TAMPERED — File has been modified or corrupted
-```
+### New & Advanced Features
+
+*   🔍 **Heuristic Audit System**: If a file is flagged as `TAMPERED`, the backend performs a heuristic check by comparing the current uploaded file size against the originally stored size. A Detailed Audit Report explains if data was appended, removed, or bit-flipped.
+*   🗑️ **Trash & Restore Engine**: Files can be safely soft-deleted to a Trash Bin. They are immediately hidden from dashboards and can be fully restored or permanently wiped via dedicated API routes.
+*   📄 **PDF Verification Certificates**: Instantly generate and download a cryptographic PDF certificate proving a file's authenticity.
+*   🔗 **Public Sharing & QR Codes**: Share verified files with external users through a beautifully designed public verification portal and scannable QR codes.
+*   ⏱️ **File Expiry**: Set an expiration date for files, after which they are flagged to prevent outdated verification.
 
 ---
 
 ## 🏗️ Architecture
 
-```
+```text
 👤 User (MetaMask Wallet)
          ↓
-🖥️  React Frontend (JSX + Framer Motion)
+🖥️  React Frontend (Vite + JSX + Framer Motion)
          ↓                        ↓
-⚙️  Go Backend (Gin)         ⛓️  FileRegistry Smart Contract
+⚙️  Go Backend (Gin/Fiber)   ⛓️  Smart Contract (Ethereum)
          ↓                        ↓
-🍃  MongoDB Atlas            📜  CryptoVault.sol (Sepolia)
-☁️  Cloudinary
+🍃  MongoDB Atlas            📜  FileRegistry.sol (Sepolia)
 ```
 
 ---
@@ -79,68 +62,38 @@ Mismatch → ⚠️ TAMPERED — File has been modified or corrupted
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Frontend | React 18 + JSX | User Interface |
-| Animations | Framer Motion | Smooth UI transitions |
-| Backend | Go + Gin Framework | REST API Server |
-| Database | MongoDB Atlas | File Metadata Storage |
-| Cloud Storage | Cloudinary | Encrypted File Storage |
-| Blockchain | Solidity + Ethereum Sepolia | Immutable Hash Storage |
-| Web3 | ethers.js v6 | Blockchain Interaction |
-| Wallet | MetaMask | User Authentication |
-| Hashing | SHA-256 (Go crypto) | File Fingerprinting |
-| Encryption | AES-256-GCM | File Encryption |
-| Deployment | Vercel | Live Hosting |
-| CI/CD | GitHub Actions | Automated Testing |
+| **Frontend** | React (Vite) + Tailwind CSS | User Interface & Glassmorphic Dark UI |
+| **Animations** | Framer Motion | Smooth UI transitions & Micro-animations |
+| **Backend** | Go (Golang) + Gin | Concurrent, high-performance REST API |
+| **Database** | MongoDB Atlas | Fast, NoSQL metadata storage |
+| **Blockchain** | Solidity + Ethereum Sepolia | Immutable Hash Storage & Ledger |
+| **Web3** | ethers.js v6 | Frontend-to-Blockchain interactions |
+| **Wallet** | MetaMask | User Authentication & Transaction signing |
 
 ---
 
 ## 📁 Project Structure
 
-```
+```text
 ChainLock/
-├── 📁 frontend/                     React Application
+├── 📁 frontend/                     # React Vite Application
 │   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Landing.jsx          Home page (before login)
-│   │   │   ├── Login.jsx            MetaMask wallet connect
-│   │   │   ├── Dashboard.jsx        Stats + Integrity Score
-│   │   │   ├── Upload.jsx           File upload + blockchain seal
-│   │   │   ├── Verify.jsx           File integrity verification
-│   │   │   ├── Files.jsx            File management + download
-│   │   │   ├── BlockchainLog.jsx    Transaction history
-│   │   │   ├── Profile.jsx          Wallet info + security score
-│   │   │   └── NotFound.jsx         404 page
-│   │   ├── components/
-│   │   │   ├── Sidebar.jsx          Navigation sidebar
-│   │   │   ├── Topbar.jsx           Header with wallet info
-│   │   │   ├── StatusBadge.jsx      Valid/Tampered/Pending badge
-│   │   │   ├── TxStatus.jsx         Blockchain transaction status
-│   │   │   └── Loading.jsx          Loading states
-│   │   ├── utils/
-│   │   │   ├── api.js               Go Backend API calls
-│   │   │   ├── blockchain.js        ethers.js contract calls
-│   │   │   └── animations.js        Framer Motion variants
-│   │   ├── styles/                  CSS files for each page
-│   │   └── contracts/
-│   │       └── abi.json             Smart contract ABI
-│   └── .env                         Environment variables
+│   │   ├── pages/                   # App Views (Dashboard, Upload, Verify, Trash, etc.)
+│   │   ├── components/              # Reusable UI (Sidebar, Topbar, Modals)
+│   │   ├── utils/                   # API bindings, ethers.js config, animation variants
+│   │   └── index.css                # Global Tailwind styles & Glassmorphic tokens
+│   └── package.json
 │
-├── 📁 go-backend/                   Go API Server
-│   ├── main.go                      Server entry point
-│   ├── database/db.go               MongoDB connection
-│   ├── handlers/
-│   │   ├── upload.go                File upload handler
-│   │   ├── verify.go                File verify handler
-│   │   └── files.go                 File CRUD handlers
-│   ├── models/file.go               MongoDB schema
-│   ├── routes/routes.go             API routes
-│   └── utils/
-│       ├── hash.go                  SHA-256 utility
-│       └── hash_test.go             Unit tests
+├── 📁 go-backend/                   # Go API Server
+│   ├── main.go                      # Application Entry Point
+│   ├── database/db.go               # MongoDB Connection Manager
+│   ├── handlers/                    # REST API Controllers (Upload, Verify, Trash)
+│   ├── models/file.go               # BSON/JSON Data Models
+│   └── routes/routes.go             # Gin Router Configuration
 │
-└── 📁 contracts/                    Solidity Smart Contract
-    ├── FileRegistry.sol             Main contract
-    └── abi.json                     Contract ABI
+└── 📁 contracts/                    # Solidity Smart Contracts
+    ├── FileRegistry.sol             # Ethereum Logic
+    └── abi.json                     # Contract ABI
 ```
 
 ---
@@ -149,14 +102,12 @@ ChainLock/
 
 ### Prerequisites
 
-| Tool | Version | Download |
-|------|---------|---------|
-| Node.js | v18+ | [nodejs.org](https://nodejs.org/) |
-| Go | v1.21+ | [golang.org](https://golang.org/) |
-| MetaMask | Latest | [metamask.io](https://metamask.io/) |
-| MongoDB Atlas | Free tier | [mongodb.com](https://mongodb.com/atlas) |
-
----
+| Tool | Version |
+|------|---------|
+| Node.js | v18+ |
+| Go | v1.21+ |
+| MetaMask | Latest |
+| MongoDB Atlas | Free tier |
 
 ### 1. Clone Repository
 
@@ -164,8 +115,6 @@ ChainLock/
 git clone https://github.com/pratikshakalbhor/ChainLock.git
 cd ChainLock
 ```
-
----
 
 ### 2. Frontend Setup
 
@@ -182,12 +131,12 @@ REACT_APP_API_URL=http://localhost:5000/api
 
 ```bash
 npm start
-# Runs at http://localhost:3000
+# App starts on http://localhost:3000
 ```
 
----
-
 ### 3. Go Backend Setup
+
+*Note: Ensure `CGO_ENABLED=0` is set if running on Windows with certain MinGW configurations.*
 
 ```bash
 cd go-backend
@@ -197,30 +146,15 @@ Create `go-backend/.env`:
 ```env
 MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
 PORT=5000
+PINATA_API_KEY=your_key  # Optional: For IPFS backups
 ```
 
 ```bash
+$env:CGO_ENABLED="0"  # For Windows PowerShell
 go mod tidy
 go run main.go
-# Runs at http://localhost:5000
+# Server starts on http://localhost:5000
 ```
-
----
-
-### 4. Smart Contract
-
-Contract deployed on **Ethereum Sepolia Testnet**.
-
-To redeploy:
-```
-1. Open https://remix.ethereum.org
-2. Import contracts/CryptoVault.sol
-3. Compiler: Solidity 0.8.19
-4. Deploy with Injected Provider (MetaMask)
-5. Copy address to frontend/.env
-```
-
-Get free Sepolia ETH: [sepoliafaucet.com](https://sepoliafaucet.com/)
 
 ---
 
@@ -228,187 +162,35 @@ Get free Sepolia ETH: [sepoliafaucet.com](https://sepoliafaucet.com/)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/` | Health check |
-| `POST` | `/api/upload` | Upload file + generate SHA-256 hash |
-| `POST` | `/api/verify` | Verify file integrity |
-| `GET` | `/api/files?wallet=0x...` | Get all files by wallet address |
-| `GET` | `/api/files/:id` | Get single file details |
-| `PUT` | `/api/files/:id/revoke` | Revoke file record |
-| `GET` | `/api/stats` | Get dashboard statistics |
+| `POST` | `/api/upload` | Upload file, generate SHA-256 hash, and store metadata |
+| `POST` | `/api/verify` | Verify integrity & return Heuristic Audit if tampered |
+| `GET`  | `/api/files` | Get all active files (excludes trash) |
+| `GET`  | `/api/files/trash/all`| Get all soft-deleted files |
+| `DELETE`| `/api/files/:id` | Soft delete (Move to Trash) |
+| `POST` | `/api/files/:id/restore`| Restore file from Trash |
+| `DELETE`| `/api/files/:id/permanent`| Permanently delete a file |
+| `GET`  | `/api/files/:id/certificate`| Download PDF verification certificate |
+| `GET`  | `/api/stats` | Get Dashboard analytics (Valid vs. Tampered) |
 
 ---
 
-## 📜 Smart Contract Functions
+## 🛡️ Security & Integrity
 
-| Function | Type | Description |
-|----------|------|-------------|
-| `sealFile()` | write | Store file hash permanently on blockchain |
-| `verifyFile()` | write | Compare hash + emit verification event |
-| `quickVerify()` | read | View-only hash comparison (no gas fee) |
-| `revokeFile()` | write | Revoke file record |
-| `getFile()` | read | Fetch file details from blockchain |
-| `getStats()` | read | Total files, verifications, tampered count |
-| `addUploader()` | write | Add authorized uploader (owner only) |
+*   **Cryptographic Fingerprinting**: SHA-256 hashes mean even a single bit-flip radically changes the fingerprint.
+*   **Tamper Heuristics**: Our Go backend calculates the byte-level discrepancy between the original and tampered files to detect unauthorized insertions or deletions.
+*   **Immutability**: Once a transaction is confirmed on Sepolia, the proof is mathematically irreversible.
+*   **Soft Deletions**: Accidental deletions are protected via a robust Trash/Restore system.
 
 ---
 
-## 🧪 Running Tests
-
-```bash
-cd go-backend
-
-# Run all tests
-go test ./... -v
-
-# Run utils tests
-go test ./utils/ -v
-
-# Run with coverage
-go test ./utils/ -v -cover
-```
-
-### Test Results:
-```
-=== RUN   TestGenerateSHA256FromBytes  ✅ PASS
-=== RUN   TestHashConsistency          ✅ PASS
-=== RUN   TestHashUniqueness           ✅ PASS
-=== RUN   TestTamperDetection          ✅ PASS
-=== RUN   TestEmptyHash                ✅ PASS
-
-PASS ok cryptovault/utils 0.805s
-```
-
----
-
-## 🔄 How It Works
-
-### Upload Flow:
-```
-1. User selects file on Upload page
-2. Go Backend receives file via POST /api/upload
-3. SHA-256 hash generated from file content
-4. File metadata saved to MongoDB
-5. ethers.js calls sealFile() on Smart Contract
-6. MetaMask popup → User confirms transaction
-7. TX Hash received → File is blockchain-sealed ✅
-```
-
-### Verify Flow:
-```
-1. User re-uploads same file on Verify page
-2. Go Backend generates new SHA-256 hash
-3. Original hash fetched from MongoDB
-4. Hashes compared:
-   Match    → ✅ VALID    (File is authentic)
-   Mismatch → ⚠️ TAMPERED (File has been modified)
-5. Result shown with both hashes for comparison
-```
-
----
-
-## 📊 Dashboard Features
-
-| Feature | Description |
-|---------|-------------|
-| **Total Files** | Count of all sealed files |
-| **Integrity Score** | % of valid files (animated circle graph) |
-| **Valid Count** | Files passing integrity verification |
-| **Tampered Count** | Files with hash mismatch detected |
-| **Recent Activity** | Last 5 file operations with timestamps |
-| **Quick Actions** | Upload, Verify, Blockchain Log buttons |
-
-### Integrity Score:
-| Score | Status | Indicator |
-|-------|--------|-----------|
-| 100% | Perfect | Green |
-| 80-99% | Good | Blue |
-| 50-79% | Warning | Yellow |
-| < 50% | Critical | Red |
-
----
-
-## 🎯 Real World Use Cases
-
-| Sector | Use Case | Impact |
-|--------|----------|--------|
-| 🏥 Healthcare | Patient record integrity | Prevent wrong treatment |
-| 🏦 Banking | Financial document verification | Audit compliance |
-| 🎓 Education | Certificate authenticity | Prevent fake degrees |
-| ⚖️ Legal | Contract tamper detection | Legal proof |
-| 🏢 Corporate | Employee data integrity | GDPR compliance |
-| 🏛️ Government | Public record verification | Transparency |
-
----
-
-## 🔒 Security Features
-
-- **AES-256-GCM** encryption before cloud upload
-- **SHA-256** cryptographic hashing (collision resistant)
-- **Ethereum blockchain** — immutable, decentralized record
-- **MetaMask** wallet authentication (non-custodial)
-- **Private keys never stored** — user retains full control
-- **onlyAuthorized** modifier — access control on contract
-
----
-
-## 🌐 Deployment
-
-### Frontend — Vercel
-```
-1. vercel.com → New Project
-2. Connect GitHub repo
-3. Root Directory: frontend
-4. Add environment variables
-5. Deploy!
-```
-
-### Backend — Railway / Render
-```
-1. railway.app → New Project
-2. Connect GitHub repo
-3. Root Directory: go-backend
-4. Add environment variables
-5. Deploy!
-```
-
----
-
-## 🔁 CI/CD Pipeline
-
-GitHub Actions runs on every push to main:
-
-```
-Job 1: Go Backend Tests      go test ./... -v
-Job 2: Frontend Build        npm run build
-Job 3: Contract Check        ABI + .sol file exists
-Job 4: Code Quality          go vet ./...
-```
-
----
-
-## 👩💻 Developer
+## 👨‍💻 Developed By
 
 **Pratiksha Kalbhor**
 - GitHub: [@pratikshakalbhor](https://github.com/pratikshakalbhor)
-- Project: FileProof — ChainLock
-- Subject: Blockchain Technology
+- Project: FileProof (ChainLock)
 
 ---
 
 ## 📄 License
 
 MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-- [Ethereum Foundation](https://ethereum.org/) — Blockchain infrastructure
-- [MongoDB Atlas](https://mongodb.com/atlas) — Cloud database
-- [Gin Framework](https://gin-gonic.com/) — Go web framework
-- [Framer Motion](https://framer.com/motion/) — React animations
-- [ethers.js](https://ethers.org/) — Ethereum library
-
----
-
-> 

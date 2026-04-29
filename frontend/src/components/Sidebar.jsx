@@ -8,6 +8,7 @@ import {
   Activity,
   User,
   LogOut,
+  Trash2,
 } from 'lucide-react';
 
 const NAV = [
@@ -15,6 +16,7 @@ const NAV = [
   { path: '/upload',         label: 'Upload File',    icon: UploadCloud },
   { path: '/verify',         label: 'Verify File',    icon: ShieldCheck },
   { path: '/my-files',       label: 'My Files',       icon: Folder },
+  { path: '/trash',          label: 'Trash',          icon: Trash2 },
   { path: '/blockchain-log', label: 'Blockchain Log', icon: Activity },
   { path: '/profile',        label: 'Profile',        icon: User },
 ];

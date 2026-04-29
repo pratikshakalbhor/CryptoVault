@@ -79,7 +79,7 @@ function StatusBadge({ status, isExpired }) {
 export default function Dashboard({ walletAddress }) {
   const navigate = useNavigate();
   const [files, setFiles] = useState([]);
-  const [stats, setStats] = useState({ total: 0, valid: 0, tampered: 0 });
+  const [stats, setStats] = useState({ total: 0, valid: 0, tampered: 0, recentLogs: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const pollingRef = useRef(null);
@@ -88,7 +88,7 @@ export default function Dashboard({ walletAddress }) {
     try {
       const statsRes = await getStats();
       const s = statsRes.stats || statsRes || {};
-      setStats({ total: s.total || 0, valid: s.valid || 0, tampered: s.tampered || 0 });
+      setStats({ total: s.total || 0, valid: s.valid || 0, tampered: s.tampered || 0, recentLogs: statsRes.recentLogs || [] });
     } catch {
       // silently ignore
     }
@@ -103,7 +103,7 @@ export default function Dashboard({ walletAddress }) {
       ]);
       setFiles(filesRes.files || []);
       const s = statsRes.stats || statsRes || {};
-      setStats({ total: s.total || 0, valid: s.valid || 0, tampered: s.tampered || 0 });
+      setStats({ total: s.total || 0, valid: s.valid || 0, tampered: s.tampered || 0, recentLogs: statsRes.recentLogs || [] });
     } catch (err) {
       setError(err.message || 'Failed to reach backend');
     } finally {
@@ -224,6 +224,37 @@ export default function Dashboard({ walletAddress }) {
                     <td>{fmtSize(f.fileSize)}</td>
                     <td><StatusBadge status={f.status} isExpired={isExpired} /></td>
                   </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 24 }}>
+        <div className="sec-hdr">
+          <span className="sec-title"><Activity size={18} /> Recent Verifications</span>
+        </div>
+        {!stats.recentLogs || stats.recentLogs.length === 0 ? <div className="empty">No verifications yet.</div> : (
+          <table>
+            <thead><tr><th>File</th><th>Hash</th><th>Status</th><th>Verified At</th></tr></thead>
+            <tbody>
+              {(stats.recentLogs || []).map(f => {
+                const isExpired = f.isExpired || (f.expiryDate && new Date(f.expiryDate) < new Date());
+                return (
+                <tr key={f.fileId || f.id} className="tr-click" onClick={() => navigate(`/files/${f.fileId || f.id}`)}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <FileText size={16} style={{ color: 'var(--accent-cyan)' }} />
+                      <div><div className="fname">{f.filename || f.name}</div><div className="ftype">{f.fileType || f.type || 'unknown'}</div></div>
+                    </div>
+                  </td>
+                  <td>{hashPill(f.originalHash || f.fileHash)}</td>
+                  <td><StatusBadge status={f.status} isExpired={isExpired} /></td>
+                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {f.verifiedAt ? new Date(f.verifiedAt).toLocaleString() : 'N/A'}
+                  </td>
+                </tr>
                 );
               })}
             </tbody>

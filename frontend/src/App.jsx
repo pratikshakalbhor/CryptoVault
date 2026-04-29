@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import './index.css';
 
 import Login       from './pages/Login';
@@ -13,6 +14,7 @@ import BlockchainLog from './pages/BlockchainLog';
 import FileDetails from './pages/FileDetails';
 import Profile     from './pages/Profile';
 import PublicVerify from './pages/PublicVerify';
+import Trash        from './pages/Trash';
 
 // ── Title map (path → label) ───────────────────────────────────────
 const TITLES = {
@@ -20,6 +22,7 @@ const TITLES = {
   '/upload':         'Upload File',
   '/verify':         'Verify File',
   '/my-files':       'My Files',
+  '/trash':          'Trash',
   '/blockchain-log': 'Blockchain Log',
   '/profile':        'Profile',
 };
@@ -35,6 +38,9 @@ function AppLayout({ walletAddress, onLogout }) {
 
   return (
     <div className="app">
+      <Toaster position="top-right" toastOptions={{
+        style: { background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }
+      }} />
       <Sidebar onLogout={onLogout} />
       <div className="main">
         <Topbar
@@ -48,6 +54,7 @@ function AppLayout({ walletAddress, onLogout }) {
             <Route path="/upload"           element={<Upload      walletAddress={walletAddress} />} />
             <Route path="/verify"           element={<Verify      walletAddress={walletAddress} />} />
             <Route path="/my-files"         element={<MyFiles     walletAddress={walletAddress} />} />
+            <Route path="/trash"            element={<Trash       walletAddress={walletAddress} />} />
             <Route path="/blockchain-log"   element={<BlockchainLog walletAddress={walletAddress} />} />
             <Route path="/files/:id"        element={<FileDetails walletAddress={walletAddress} />} />
             <Route path="/profile"          element={<Profile     walletAddress={walletAddress} onLogout={onLogout} />} />
