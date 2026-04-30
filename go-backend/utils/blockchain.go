@@ -13,12 +13,16 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// FetchFileFromChain — Reads file record directly from Ethereum smart contract
-func FetchFileFromChain(fileId string) (string, string, error) {
+// FetchFileFromChain — Reads file record directly from Ethereum smart contract using fileHash
+func FetchFileFromChain(fileHash string) (string, string, error) {
 	rpcURL := os.Getenv("RPC_URL")
-	contractAddr := os.Getenv("CONTRACT_ADDRESS")
+	contractAddr := os.Getenv("FILE_REGISTRY_ADDRESS") // Corrected env var
 
-	fmt.Printf("[BLOCKCHAIN] Querying Contract: %s for FileID: '%s'\n", contractAddr, fileId)
+	if fileHash == "" {
+		return "", "", fmt.Errorf("empty file hash")
+	}
+
+	fmt.Printf("[BLOCKCHAIN] Querying FileRegistry: %s for Hash: '%s'\n", contractAddr, fileHash)
 
 	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
@@ -27,7 +31,7 @@ func FetchFileFromChain(fileId string) (string, string, error) {
 	}
 
 	// Load ABI
-	abiData, err := os.ReadFile("abi/abi.json")
+	abiData, err := os.ReadFile("abi/FileRegistry.json")
 	if err != nil {
 		fmt.Println("[BLOCKCHAIN] ABI read error:", err)
 		return "", "", err
@@ -43,8 +47,8 @@ func FetchFileFromChain(fileId string) (string, string, error) {
 		}
 	}
 
-	// Prepare call
-	data, err := contractABI.Pack("getFile", fileId)
+	// Prepare call to verifyFile(string) returns (bool, address, uint256)
+	data, err := contractABI.Pack("verifyFile", fileHash)
 	if err != nil {
 		fmt.Println("[BLOCKCHAIN] Pack error:", err)
 		return "", "", err
@@ -63,37 +67,30 @@ func FetchFileFromChain(fileId string) (string, string, error) {
 	}
 
 	// Unpack results
-	unpacked, err := contractABI.Unpack("getFile", result)
+	unpacked, err := contractABI.Unpack("verifyFile", result)
 	if err != nil {
 		fmt.Println("[BLOCKCHAIN] Unpack error:", err)
 		return "", "", err
 	}
 
-	fmt.Println("🔎 Fetching from blockchain:", fileId)
-
-	if len(unpacked) > 3 {
-		hash, ok1 := unpacked[2].(string)
-		cid, ok2 := unpacked[3].(string)
-		if ok1 && ok2 {
-			if hash == "" {
-				fmt.Println("⚠️ Blockchain record is EMPTY for:", fileId)
-				// Return error so the verification handler knows it's NOT_SYNCED
-				return "", "", fmt.Errorf("no blockchain record found for fileId: %s", fileId)
-			}
-			fmt.Println("📦 Returned hash:", hash)
-			return hash, cid, nil
+	if len(unpacked) >= 1 {
+		valid, ok := unpacked[0].(bool)
+		if ok && valid {
+			fmt.Println("✅ Blockchain confirmed registration for hash:", fileHash)
+			// In the new contract, we only store the registration status.
+			// If valid is true, the hash matches. CID is no longer stored on-chain.
+			return fileHash, "", nil 
 		}
 	}
 
-	return "", "", fmt.Errorf("failed to unpack blockchain data for fileId: %s", fileId)
+	return "", "", fmt.Errorf("no blockchain record found for hash: %s", fileHash)
 }
 
-// Keep for compatibility if needed elsewhere, but refactored to use FetchFileFromChain
-func VerifyOnChain(fileId, expectedHash string) (bool, string, error) {
-	chainHash, _, err := FetchFileFromChain(fileId)
+// VerifyOnChain — Now uses fileHash for verification
+func VerifyOnChain(fileHash, expectedHash string) (bool, string, error) {
+	chainHash, _, err := FetchFileFromChain(fileHash)
 	if err != nil {
 		return false, "", err
 	}
 	return strings.EqualFold(chainHash, expectedHash), chainHash, nil
 }
-
