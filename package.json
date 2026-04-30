@@ -3,5 +3,8 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "uuid": "^14.0.0"
+  },
+  "scripts": {
+    "backend": "cd go-backend && set CGO_ENABLED=0 && go run main.go"
   }
 }
