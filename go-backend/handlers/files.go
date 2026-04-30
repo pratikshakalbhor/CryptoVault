@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -15,31 +16,48 @@ import (
 
 func GetAllFiles(c *gin.Context) {
 	collection := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Optional wallet filter
-	filter := bson.M{"isDeleted": bson.M{"$ne": true}} // Soft-delete filter
+	// 1. Get Wallet from Query
 	wallet := c.Query("wallet")
-	if wallet != "" {
-		filter["walletAddress"] = wallet
+	if wallet == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "wallet address is required (e.g. /api/files?wallet=0x...)"})
+		return
 	}
 
-	// Latest first
+	// 2. Build Filter
+	filter := bson.M{
+		"isDeleted":     bson.M{"$ne": true},
+		"walletAddress": wallet, // Correct field name from models/file.go
+	}
+
+	fmt.Printf("[DEBUG] Fetching files for wallet: %s\n", wallet)
+
+	// 3. Query Database
 	opts := options.Find().SetSort(bson.M{"uploadedAt": -1})
 	cursor, err := collection.Find(ctx, filter, opts)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Files fetch error"})
+		fmt.Println("ERROR: MongoDB Find failed:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database fetch failed", "details": err.Error()})
 		return
 	}
 	defer cursor.Close(ctx)
 
+	// 4. Decode Results
 	var files []models.FileRecord
-	cursor.All(ctx, &files)
+	if err := cursor.All(ctx, &files); err != nil {
+		fmt.Println("ERROR: Cursor All decoding failed:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Data decoding failed", "details": err.Error()})
+		return
+	}
 
+	// Avoid null response
 	if files == nil {
 		files = []models.FileRecord{}
 	}
+
+	fmt.Printf("[DEBUG] Found %d files for wallet %s\n", len(files), wallet)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

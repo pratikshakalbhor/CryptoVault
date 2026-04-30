@@ -73,9 +73,9 @@ func VerifyFile(c *gin.Context) {
 	// 4. Fetch from Blockchain
 	chainHash := ""
 	chainCID := ""
-	if fileId != "" {
-		fmt.Printf("[DEBUG] Searching Blockchain for FileID: '%s'\n", fileId)
-		cHash, cCid, err := utils.FetchFileFromChain(fileId)
+	if currentHash != "" {
+		fmt.Printf("[DEBUG] Searching Blockchain for Hash: '%s'\n", currentHash)
+		cHash, cCid, err := utils.FetchFileFromChain(currentHash)
 		if err != nil {
 			fmt.Printf("[DEBUG] Contract Call Failed: %v\n", err)
 		}
