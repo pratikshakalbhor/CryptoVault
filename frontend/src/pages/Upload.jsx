@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { uploadFile } from '../utils/api';
-import { sealFileOnChain } from '../utils/blockchain';
+import { sealFileOnBlockchain } from '../utils/blockchain';
 import { Activity, AlertTriangle, CheckCircle, Circle, Cloud, FileText, Folder, Link, Lock, RefreshCw, UploadCloud, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -99,12 +99,14 @@ export default function Upload({ walletAddress }) {
       let txSuccess = false;
 
       try {
-        console.log('🦊 Prompting MetaMask for sealFile...');
-        const chainResult = await sealFileOnChain(file_);
+        console.log('Prompting MetaMask for registerFile...');
+        const blockchainResult = await sealFileOnBlockchain({
+          fileHash: file_.fileHash
+        });
 
-        // ── STEP 3: Verify receipt.status === 1 ──
-        txHash = chainResult.txHash;
-        txSuccess = chainResult.status === 'success';
+        // ── TX Confirmation ──
+        txHash = blockchainResult.txHash;
+        txSuccess = blockchainResult.success === true;
         setChainStatus('confirmed');
         console.log('✅ Blockchain confirmed! TxHash:', txHash);
 
