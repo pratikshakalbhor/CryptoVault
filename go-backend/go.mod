@@ -1,6 +1,6 @@
 module cryptovault
 
-go 1.22
+go 1.25.0
 
 require (
 	github.com/ethereum/go-ethereum v1.17.2
