@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -18,10 +19,11 @@ func ConnectDB() (*mongo.Client, error) {
 	if mongoURI == "" {
 		mongoURI = os.Getenv("MONGODB_URI") // Fallback
 	}
-	
+
 	if mongoURI == "" {
-		log.Println("⚠️ MONGO_URI not found in environment")
+		return nil, fmt.Errorf("❌ MONGO_URI environment variable is not set. Please set it in Render dashboard > Environment")
 	}
+	log.Printf("🔗 Connecting to MongoDB...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
