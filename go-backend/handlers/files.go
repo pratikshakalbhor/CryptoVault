@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -465,4 +467,80 @@ func PermanentDeleteFile(c *gin.Context) {
 	col.DeleteOne(ctx, bson.M{"fileId": fileId})
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "File permanently deleted"})
+}
+
+// ── PUBLIC VERIFY ──────────────────────────────
+func PublicVerify(c *gin.Context) {
+	fileId := c.Param("id")
+
+	collection := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var record models.FileRecord
+	err := collection.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Verify link invalid or expired"})
+		return
+	}
+
+	wallet := record.WalletAddress
+	if len(wallet) > 12 {
+		wallet = wallet[:8] + "..." + wallet[len(wallet)-4:]
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"fileId":     record.FileID,
+		"filename":   record.Filename,
+		"status":     record.Status,
+		"hash":       record.OriginalHash,
+		"txHash":     record.TxHash,
+		"uploadedAt": record.UploadedAt,
+		"wallet":     wallet,
+		"network":    "Ethereum Sepolia Testnet",
+	})
+}
+
+// ── DOWNLOAD ORIGINAL FILE ──────────────────────
+func DownloadOriginal(c *gin.Context) {
+	fileId := c.Param("id")
+
+	col := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var record models.FileRecord
+	if err := col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	downloadUrl := record.EncryptedURL
+	if downloadUrl == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Original file URL not available"})
+		return
+	}
+
+	// Cloudinary se file fetch karo
+	resp, err := http.Get(downloadUrl)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch original file"})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Force download headers
+	c.Header("Content-Disposition",
+		fmt.Sprintf(`attachment; filename="%s"`, record.Filename))
+	c.Header("Content-Type", record.MimeType)
+	c.Header("Access-Control-Expose-Headers", "Content-Disposition")
+
+	// Stream file to client
+	io.Copy(c.Writer, resp.Body)
+
+	// Status update
+	col.UpdateOne(ctx,
+		bson.M{"fileId": fileId},
+		bson.M{"$set": bson.M{"status": "valid"}},
+	)
 }

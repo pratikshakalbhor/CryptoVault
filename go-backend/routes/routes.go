@@ -1,8 +1,11 @@
 package routes
 
 import (
-	"github.com/gin-gonic/gin"
 	"cryptovault/handlers"
+	"cryptovault/middleware"
+	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 func RegisterRoutes(r *gin.Engine) {
@@ -21,6 +24,7 @@ func RegisterRoutes(r *gin.Engine) {
 		api.GET("/files/:id/versions",    handlers.GetFileVersions)
 		api.GET("/files/:id/certificate", handlers.DownloadCertificate)
 		api.POST("/files/:id/restore",    handlers.RestoreFile)
+		api.GET("/files/:id/download",    handlers.DownloadOriginal)
 
 		// ── Trash ──
 		api.DELETE("/files/:id",          handlers.TrashFile)
@@ -38,6 +42,6 @@ func RegisterRoutes(r *gin.Engine) {
 		api.POST("/notifications",        handlers.CreateNotificationAPI)
 
 		// ── Public ──
-		api.GET("/public/verify/:id", handlers.PublicVerify)
+		api.GET("/public/verify/:id", middleware.RateLimit(10, time.Minute), handlers.PublicVerify)
 	}
 }

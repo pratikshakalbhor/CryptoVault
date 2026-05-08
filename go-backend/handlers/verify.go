@@ -25,7 +25,7 @@ func VerifyFile(c *gin.Context) {
 	}
 	defer file.Close()
 
-	fileId      := strings.TrimSpace(c.PostForm("fileId"))
+	fileId := strings.TrimSpace(c.PostForm("fileId"))
 	currentSize := header.Size
 
 	// ── 2. Current hash generate karo ──
@@ -60,10 +60,10 @@ func VerifyFile(c *gin.Context) {
 		dbFound = false
 	}
 
-	dbHash     := ""
+	dbHash := ""
 	storedSize := int64(0)
 	if dbFound {
-		dbHash     = strings.ToLower(strings.TrimSpace(record.OriginalHash))
+		dbHash = strings.ToLower(strings.TrimSpace(record.OriginalHash))
 		storedSize = record.FileSize
 		if fileId == "" {
 			fileId = record.FileID
@@ -81,23 +81,23 @@ func VerifyFile(c *gin.Context) {
 
 	// ── 4. Decision Logic ──
 	// ✅ KEY RULE: DB hash match = VALID (blockchain optional!)
-	var status    string
-	var message   string
+	var status string
+	var message string
 	var comparison gin.H
 
 	switch {
 	case !dbFound:
-		status  = "NOT_REGISTERED"
+		status = "NOT_REGISTERED"
 		message = "🚫 File not found in registry. Upload it first."
 
 	case currentHash == dbHash:
 		// ✅ VALID — same hash, same file!
-		status  = "VALID"
+		status = "VALID"
 		message = "✔ File is authentic — integrity verified"
 
 	default:
 		// ❌ TAMPERED — hash different
-		status  = "TAMPERED"
+		status = "TAMPERED"
 		message = "❌ File has been modified — tampering detected"
 
 		// Audit comparison — size check
@@ -135,11 +135,11 @@ func VerifyFile(c *gin.Context) {
 	if dbFound {
 		notifCol := database.GetCollection("notifications")
 		notifType := "success"
-		notifMsg  := fmt.Sprintf("✅ File '%s' verified — VALID", record.Filename)
+		notifMsg := fmt.Sprintf("✅ File '%s' verified — VALID", record.Filename)
 
 		if status == "TAMPERED" {
 			notifType = "error"
-			notifMsg  = fmt.Sprintf("⚠️ TAMPER DETECTED — '%s' has been modified!", record.Filename)
+			notifMsg = fmt.Sprintf("⚠️ TAMPER DETECTED — '%s' has been modified!", record.Filename)
 		}
 
 		notifCol.InsertOne(ctx, bson.M{
@@ -171,8 +171,8 @@ func VerifyFile(c *gin.Context) {
 		"mimeType":       record.MimeType,
 		"fileSize":       record.FileSize,
 		// Restore sathi
-		"restoreUrl":     record.EncryptedURL,
-		"ipfsCID":        record.IpfsCID,
+		"restoreUrl": record.EncryptedURL,
+		"ipfsCID":    record.IpfsCID,
 	}
 
 	if comparison != nil {
