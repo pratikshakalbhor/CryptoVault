@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: chainseal-backend
+    env: go
+    rootDir: go-backend
+    buildCommand: go build -o server .
+    startCommand: ./server
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: GO_VERSION
+        value: 1.22.0
+    autoDeploy: true
