@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAllFiles } from '../utils/api';
 import {
-  Activity, AlertTriangle, CheckCircle, Copy, ExternalLink,
-  FileText, RefreshCw, Search, ShieldCheck, X, QrCode, Share2, Trash2
+  Activity, AlertTriangle, CheckCircle, ExternalLink,
+  FileText, RefreshCw, Search, ShieldCheck, X, Share2, Trash2
 } from 'lucide-react';
-import QRCode from 'react-qr-code';
 import toast from 'react-hot-toast';
+import ShareModal from '../components/ShareModal';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 const fmtSize = b =>
@@ -42,129 +42,6 @@ function StatusBadge({ status, isExpired }) {
   );
 }
 
-// ── Share Modal with QR Code ──────────────────────────────────────────
-function ShareModal({ file, onClose }) {
-  const [copied, setCopied] = useState(false);
-  const fileId = file.publicId || file.fileId || file.id;
-  const publicUrl = `${window.location.origin}/verify-public/${fileId}`;
-
-  const handleCopy = () => {
-    navigator.clipboard?.writeText(publicUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  // Close on backdrop click
-  const handleBackdrop = (e) => {
-    if (e.target === e.currentTarget) onClose();
-  };
-
-  return (
-    <div
-      onClick={handleBackdrop}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.7)',
-        backdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16,
-      }}
-    >
-      <div style={{
-        background: 'var(--bg-card, #0f172a)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: 18,
-        padding: '32px 28px',
-        maxWidth: 400,
-        width: '100%',
-        boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
-        position: 'relative',
-      }}>
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute', top: 14, right: 14,
-            background: 'rgba(255,255,255,0.06)', border: 'none',
-            borderRadius: 8, padding: '6px 8px', cursor: 'pointer',
-            color: 'var(--text-muted)',
-            display: 'inline-flex', alignItems: 'center',
-          }}
-        >
-          <X size={16} />
-        </button>
-
-        {/* Title */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <div style={{
-            background: 'linear-gradient(135deg, #2DD4BF22, #6366f122)',
-            border: '1px solid rgba(45,212,191,0.3)',
-            borderRadius: 10, padding: '8px 10px',
-            display: 'inline-flex', alignItems: 'center',
-          }}>
-            <QrCode size={20} style={{ color: '#2DD4BF' }} />
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>Share File</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-              {(file.fileName || file.name || 'File').length > 32
-                ? (file.fileName || file.name || 'File').slice(0, 29) + '...'
-                : (file.fileName || file.name || 'File')}
-            </div>
-          </div>
-        </div>
-
-        {/* QR Code */}
-        <div style={{
-          display: 'flex', justifyContent: 'center', marginBottom: 20,
-          background: '#fff', borderRadius: 14, padding: 16,
-        }}>
-          <QRCode
-            value={publicUrl}
-            size={180}
-            style={{ borderRadius: 4 }}
-            level="H"
-          />
-        </div>
-
-        {/* Description */}
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginBottom: 14 }}>
-          Scan the QR code or copy the link below to share this file's public verification page.
-        </p>
-
-        {/* URL + Copy */}
-        <div style={{
-          display: 'flex', gap: 8, alignItems: 'center',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 10, padding: '10px 14px',
-        }}>
-          <span style={{
-            flex: 1, fontSize: 10, fontFamily: 'monospace',
-            color: 'var(--text-secondary)', wordBreak: 'break-all',
-          }}>
-            {publicUrl}
-          </span>
-          <button
-            onClick={handleCopy}
-            style={{
-              flexShrink: 0,
-              background: copied ? 'rgba(45,212,191,0.15)' : 'rgba(255,255,255,0.07)',
-              border: `1px solid ${copied ? 'rgba(45,212,191,0.4)' : 'rgba(255,255,255,0.1)'}`,
-              borderRadius: 8, padding: '6px 10px',
-              cursor: 'pointer', color: copied ? '#2DD4BF' : 'var(--text-muted)',
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              fontSize: 11, fontWeight: 600, transition: 'all 0.2s',
-            }}
-          >
-            <Copy size={12} /> {copied ? 'Copied!' : 'Copy'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ── Component ────────────────────────────────────────────────────────
 export default function MyFiles({ walletAddress }) {

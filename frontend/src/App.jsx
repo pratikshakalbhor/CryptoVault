@@ -80,7 +80,7 @@ export default function App() {
   if (window.location.pathname.startsWith('/verify-public/')) {
     return (
       <Routes>
-        <Route path="/verify-public/:publicId" element={<PublicVerify />} />
+        <Route path="/verify-public/:fileId" element={<PublicVerify />} />
       </Routes>
     );
   }

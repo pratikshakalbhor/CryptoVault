@@ -172,44 +172,15 @@ export default function Verify({ onNotify, walletAddress }) {
     setResult(null);
   };
 
-  const handleRestore = async () => {
-    if (!result) return;
+  const handleRestore = () => {
+    if (!result?.fileId) return;
 
-    const restoreUrl = result.restoreUrl || result.ipfsURL || result.encryptedUrl || result.cloudUrl;
+    // Backend se direct download
+    const url = `${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/files/${result.fileId}/download`;
+    window.open(url, '_blank');
 
-    if (restoreUrl && restoreUrl !== '' && restoreUrl !== 'N/A') {
-      // ✅ Direct download from Cloudinary/IPFS
-      const a    = document.createElement('a');
-      a.href     = restoreUrl;
-      a.download = result.filename || 'restored_file';
-      a.target   = '_blank';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      // Also call restore API to update status
-      try {
-        await fetch(
-          `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/files/${result.fileId}/restore`,
-          { method: 'POST' }
-        );
-        if (typeof onNotify === 'function') {
-          onNotify('✅ File restored successfully!', 'success');
-        }
-      } catch (err) {
-        console.error('Restore API error:', err);
-      }
-
-    } else {
-      // No URL — show file info
-      alert(
-        `Original File Details:\n\n` +
-        `Name: ${result.filename || '—'}\n` +
-        `Hash: ${result.originalHash || '—'}\n` +
-        `TX: ${result.txHash || '—'}\n\n` +
-        `Original file URL not available.\n` +
-        `Contact system administrator for manual restore.`
-      );
+    if (typeof onNotify === 'function') {
+      onNotify('⬇️ Downloading original file...', 'success');
     }
   };
 
