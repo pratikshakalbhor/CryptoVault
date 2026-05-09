@@ -10,7 +10,7 @@ import {
   ShieldCheck, AlertTriangle, CheckCircle, Clipboard,
   ExternalLink, FileText, FileImage, FileCode, FileArchive,
   RefreshCw, Loader2, Database, Link as LinkIcon,
-  ChevronRight, FileCheck, Search, UploadCloud, Download
+  ChevronRight, FileCheck, Search, UploadCloud, Download, Shield
 } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -172,15 +172,33 @@ export default function Verify({ onNotify, walletAddress }) {
     setResult(null);
   };
 
-  const handleRestore = () => {
+  const handleRestore = async () => {
     if (!result?.fileId) return;
 
-    // Backend se direct download
-    const url = `${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/files/${result.fileId}/download`;
-    window.open(url, '_blank');
+    try {
+      // ✅ Backend download endpoint use karo (correct port)
+      const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const downloadUrl = `${apiBase}/api/files/${result.fileId}/download`;
 
-    if (typeof onNotify === 'function') {
-      onNotify('⬇️ Downloading original file...', 'success');
+      // Open in new tab — auto download hoil
+      window.open(downloadUrl, '_blank');
+
+      // Status update (restore POST)
+      await fetch(`${apiBase}/api/files/${result.fileId}/restore`, {
+        method: 'POST',
+      });
+
+      if (typeof onNotify === 'function') {
+        onNotify('⬇️ Original file downloading...', 'success');
+      }
+      toast.success('⬇️ Downloading original file...');
+
+    } catch (err) {
+      console.error('Restore error:', err);
+      if (typeof onNotify === 'function') {
+        onNotify('Restore failed: ' + err.message, 'error');
+      }
+      toast.error('Restore failed: ' + err.message);
     }
   };
 
@@ -210,38 +228,35 @@ export default function Verify({ onNotify, walletAddress }) {
           shadow: '0 0 30px rgba(45, 212, 191, 0.2)'
         };
       case 'TAMPERED':
-      case 'DATABASE_COMPROMISED':
         return {
           class: 'tampered',
           badge: 'Modified',
           title: '⚠ This file has been modified',
-          desc: 'Warning: This file does not match the original record. It is likely that it has been altered or tampered with.',
+          desc: 'Warning: This file does not match the original record. It has likely been altered.',
           color: 'var(--accent-red)',
           icon: <AlertTriangle size={48} />,
           bg: 'rgba(239, 68, 68, 0.1)',
           shadow: '0 0 30px rgba(239, 68, 68, 0.2)'
         };
+      case 'DATABASE_COMPROMISED':
+        return {
+          class: 'tampered',
+          badge: 'SECURITY BREACH',
+          title: '🚨 DATABASE COMPROMISED!',
+          desc: 'CRITICAL: The database record for this file does not match the blockchain proof. This indicates a high-level system breach.',
+          color: 'var(--accent-red)',
+          icon: <Shield size={48} color="var(--accent-red)" />,
+          bg: 'rgba(239, 68, 68, 0.15)',
+          shadow: '0 0 40px rgba(239, 68, 68, 0.4)'
+        };
       case 'NOT_SYNCED':
-        // DB verified asel tar VALID dakhva
-        if (result?.dbVerified === true || result?.isMatch === true) {
-          return {
-            class: 'valid',
-            badge: 'DB Verified ✓',
-            title: '✔ This file is Authentic',
-            desc: 'File matches database record. Blockchain sync is still pending — this does not affect authenticity.',
-            color: 'var(--accent-teal)',
-            icon: <CheckCircle size={48} />,
-            bg: 'rgba(45, 212, 191, 0.1)',
-            shadow: '0 0 30px rgba(45, 212, 191, 0.2)'
-          };
-        }
         return {
           class: 'warning',
-          badge: 'Sync Pending',
-          title: '⏳ Blockchain sync in progress...',
-          desc: 'File is in our records but blockchain proof is still being processed. Please check back shortly.',
+          badge: 'Not Synced',
+          title: '⏳ Awaiting Blockchain Seal',
+          desc: 'File exists in database but hasn\'t been confirmed on-chain yet. You can force a sync below.',
           color: '#F59E0B',
-          icon: <Loader2 size={48} className="spin" />,
+          icon: <RefreshCw size={48} className="spin" />,
           bg: 'rgba(245, 158, 11, 0.1)',
           shadow: '0 0 30px rgba(245, 158, 11, 0.2)'
         };
