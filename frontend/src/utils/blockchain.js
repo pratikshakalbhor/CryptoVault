@@ -44,6 +44,13 @@ const getContract = async (withSigner = false) => {
 export const sealFileOnBlockchain = async (fileData) => {
   try {
     const contract = await getContract(true);
+    
+    // 1. Pre-transaction check to prevent reverts and save gas
+    const isRegistered = await contract.fileExists(fileData.fileHash);
+    if (isRegistered) {
+      throw new Error("Already registered");
+    }
+
     console.log("Calling registerFile with hash:", fileData.fileHash);
 
     const tx = await contract.registerFile(fileData.fileHash);
