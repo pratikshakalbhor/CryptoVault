@@ -1,18 +1,17 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { BrowserProvider, getBytes } from 'ethers';
 import { uploadFile } from '../utils/api';
 import { sealFileOnBlockchain } from '../utils/blockchain';
 import { Activity, AlertTriangle, CheckCircle, Circle, Cloud, FileText, Folder, Link, Lock, RefreshCw, UploadCloud, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-
 const STEPS = [
-  { id: 'hash',    label: 'Generating SHA-256 hash' },
-  { id: 'encrypt', label: 'Encrypting with AES-256' },
-  { id: 'cloud',   label: 'Uploading to IPFS/Pinata' },
-  { id: 'db',      label: 'Saving metadata to MongoDB' },
-  { id: 'chain',   label: 'Waiting for MetaMask Transaction' },
+  { id: 'hash',    label: 'Generating Secure Hash' },
+  { id: 'sign',    label: 'Digital Signing (MetaMask)' },
+  { id: 'upload',  label: 'Encrypting & Storing' },
+  { id: 'chain',   label: 'Sealing on Blockchain' },
 ];
 
 const fmtSize = b =>
@@ -20,9 +19,17 @@ const fmtSize = b =>
     ? (b / 1024).toFixed(2) + ' KB'
     : (b / 1048576).toFixed(2) + ' MB';
 
+// Helper to hash file on client
+async function calculateFileHash(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export default function Upload({ walletAddress }) {
   const navigate = useNavigate();
-  const [phase, setPhase]         = useState('idle');     // idle | uploading | blockchain | done
+  const [phase, setPhase]         = useState('idle');     // idle | uploading | done
   const [file, setFile]            = useState(null);
   const [expiryDate, setExpiryDate]= useState('');
   const [drag, setDrag]            = useState(false);
@@ -30,162 +37,108 @@ export default function Upload({ walletAddress }) {
   const [activeStep, setActiveStep]= useState(null);
   const [progress, setProgress]    = useState(0);
   const [result, setResult]        = useState(null);
-  const [chainStatus, setChainStatus] = useState(''); // 'waiting' | 'confirmed' | 'rejected'
+  const [chainStatus, setChainStatus] = useState(''); 
   const fileRef = useRef();
-
-  /* ── handlers ── */
-  const handleDrop = e => {
-    e.preventDefault(); setDrag(false);
-    const f = e.dataTransfer.files[0];
-    if (f) { 
-      console.log("File selected via Drop:", f);
-      setFile(f); setResult(null); 
-    }
-  };
-  
-  const handleFileChange = e => {
-    const f = e.target.files[0];
-    if (f) { 
-      console.log("File selected via Picker:", f);
-      setFile(f); setResult(null); 
-    }
-  };
 
   const handleUpload = async (e) => {
     if (e) e.preventDefault();
     if (!file) return;
 
-    // MetaMask check
     if (!window.ethereum) {
-      toast.error('MetaMask is not installed. Please install it to upload files to the Blockchain.');
+      toast.error('MetaMask is not installed.');
       return;
     }
 
     setPhase('uploading');
     setStepsDone([]);
-    setActiveStep(null);
-    setProgress(0);
-    setChainStatus('');
+    setActiveStep('hash');
+    setProgress(10);
 
     try {
-      // ── Visual step progression for backend steps ──
-      const stepDuration = 600;
-      let si = 0;
-      const stepTimer = setInterval(() => {
-        if (si < STEPS.length - 1) {
-          setActiveStep(STEPS[si].id);
-          if (si > 0) setStepsDone(prev => [...prev, STEPS[si - 1].id]);
-          setProgress(Math.round((si / STEPS.length) * 80));
-          si++;
-        }
-      }, stepDuration);
+      // ── STEP 1: HASH ──
+      console.log('Calculating hash...');
+      const fileHash = await calculateFileHash(file);
+      setStepsDone(prev => [...prev, 'hash']);
+      setProgress(30);
 
-      // ── STEP 1: Upload to Go Backend ──
-      console.log('📤 Sending file to backend...');
+      // ── STEP 2: SIGN ──
+      setActiveStep('sign');
+      console.log('Prompting for signature...');
+      const provider = new BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      // Sign the bytes of the hash
+      const signature = await signer.signMessage(getBytes(fileHash));
+      setStepsDone(prev => [...prev, 'sign']);
+      setProgress(50);
+
+      // ── STEP 3: UPLOAD ──
+      setActiveStep('upload');
       const formattedExpiry = expiryDate ? new Date(expiryDate).toISOString() : null;
-      const data = await uploadFile(file, walletAddress || '', formattedExpiry);
+      const data = await uploadFile(file, walletAddress || '', formattedExpiry, null, null, signature);
       console.log('✅ Backend response:', data);
 
       const file_ = data.file || data;
-      const isDuplicate = data.isDuplicate === true;
-      clearInterval(stepTimer);
-
-      if (isDuplicate) {
-        toast.success("File metadata already exists in vault. Sealing on blockchain...");
+      // Map storage URL from backend for display in success card
+      if (!file_.cloudURL && !file_.ipfsURL) {
+        file_.ipfsURL = file_.ipfsURL || file_.encryptedUrl || file_.ipfsCID ? 
+          (file_.encryptedUrl || `https://gateway.pinata.cloud/ipfs/${file_.ipfsCID}`) : '';
       }
+      setStepsDone(prev => [...prev, 'upload']);
+      setProgress(75);
 
-      // ── STEP 2: MetaMask — sealFile on blockchain ──
+      // ── STEP 4: BLOCKCHAIN SEAL ──
       setActiveStep('chain');
       setChainStatus('waiting');
-      setProgress(85);
-      setStepsDone(STEPS.map(s => s.id).filter(id => id !== 'chain'));
-
-      let txHash = null;
-      let txSuccess = false;
+      setProgress(90);
 
       try {
-        console.log('Prompting MetaMask for registerFile...');
         const blockchainResult = await sealFileOnBlockchain({
-          fileHash: file_.fileHash || file_.hash || data.fileHash
+          fileHash: file_.fileHash || fileHash,
+          ipfsCID:  file_.ipfsCID
         });
 
-        // ── TX Confirmation ──
-        txHash = blockchainResult.txHash;
-        txSuccess = blockchainResult.success === true;
+        const txHash = blockchainResult.txHash;
         setChainStatus('confirmed');
-        console.log('✅ Blockchain confirmed! TxHash:', txHash);
+        file_.txHash = txHash;
+        file_.txSuccess = true;
 
-        // ── STEP 3: Update Backend with ACTUAL txHash ──
-        if (txHash && txSuccess) {
-           console.log('🔄 Syncing txHash with backend...');
-           const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-           const fileId = file_.fileId || data.fileId;
-           // Save TX hash to backend
-           const response = await fetch(`${API_URL}/api/files/${fileId}/tx`, {
-             method: 'PATCH',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({
-               txHash: blockchainResult.txHash,
-               blockNumber: blockchainResult.blockNumber
-             })
-           });
-           
-           if (response.ok) {
-              console.log('✅ Backend synced with txHash');
-           }
-        }
-        
-        // Create notification via API
-        try {
-          await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/notifications`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              wallet:  walletAddress,
-              message: `✅ File '${file.name}' uploaded & sealed on blockchain`,
-              type:    'success',
-              fileId:  file_.fileId || data.fileId,
-            })
-          });
-        } catch (e) {
-          // Notification save optional — don't block upload
-        }
+        // Sync txHash
+        const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+        await fetch(`${API_URL}/api/files/${file_.fileId || data.fileId}/tx`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ txHash: txHash })
+        });
 
+        toast.success("File sealed successfully!");
       } catch (chainErr) {
-        console.warn('⚠️ Blockchain error:', chainErr.message);
-
-        if (chainErr.code === 'USER_REJECTED' || chainErr.message?.includes('rejected')) {
-          setChainStatus('rejected');
-          toast.error('⚠️ MetaMask transaction rejected. File stored, but not sealed.');
-        } else if (chainErr.message?.includes('Already registered')) {
-          setChainStatus('confirmed');
-          txSuccess = true;
-          toast.success('File already verified on blockchain.');
-        } else {
-          setChainStatus('rejected');
-          toast.error(`Blockchain error: ${chainErr.message}`);
-        }
+        console.error('Blockchain error:', chainErr);
+        file_.txSuccess = false;
+        toast.error("Blockchain sealing failed. Metadata saved safely.");
       }
 
-      file_.txHash   = txHash;
-      file_.txSuccess = txSuccess;
-
       setStepsDone(STEPS.map(s => s.id));
-      setActiveStep(null);
       setProgress(100);
       setResult(file_);
       setPhase('done');
 
-      // Remove auto-navigation to allow user to see success state and choose next action
     } catch (err) {
       console.error('Upload failed:', err);
       setPhase('idle');
-      toast.error(err.message || 'Upload failed. Please try again.');
-      setStepsDone([]);
-      setActiveStep(null);
-      setProgress(0);
-      setChainStatus('');
+      toast.error(err.message || 'Upload failed');
     }
+  };
+
+  const handleDrop = e => {
+    e.preventDefault(); setDrag(false);
+    const f = e.dataTransfer.files[0];
+    if (f) { setFile(f); setResult(null); }
+  };
+  
+  const handleFileChange = e => {
+    const f = e.target.files[0];
+    if (f) { setFile(f); setResult(null); }
   };
 
   const reset = () => {
