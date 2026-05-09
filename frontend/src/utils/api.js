@@ -49,7 +49,8 @@ export const uploadFile = async (
   wallet,
   expiry,
   parentId,
-  note
+  note,
+  signature
 ) => {
   const formData = new FormData();
 
@@ -59,6 +60,7 @@ export const uploadFile = async (
   if (expiry) formData.append("expiryDate", expiry);
   if (parentId) formData.append("parentFileId", parentId);
   if (note) formData.append("versionNote", note);
+  if (signature) formData.append("signature", signature);
 
   try {
     const res = await fetch(`${BASE_URL}/api/upload`, {
