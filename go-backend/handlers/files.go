@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -515,28 +513,29 @@ func DownloadOriginal(c *gin.Context) {
 		return
 	}
 
+	// Build download URL with fallbacks
 	downloadUrl := record.EncryptedURL
+	if downloadUrl == "" && record.IpfsCID != "" {
+		downloadUrl = "https://gateway.pinata.cloud/ipfs/" + record.IpfsCID
+	}
+	if downloadUrl == "" && record.IpfsCID != "" {
+		downloadUrl = "https://ipfs.io/ipfs/" + record.IpfsCID
+	}
 	if downloadUrl == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Original file URL not available"})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":    "Original file URL not available",
+			"fileId":   record.FileID,
+			"filename": record.Filename,
+			"hash":     record.OriginalHash,
+		})
 		return
 	}
 
-	// Cloudinary se file fetch karo
-	resp, err := http.Get(downloadUrl)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch original file"})
-		return
-	}
-	defer resp.Body.Close()
+	log.Printf("⬇️ Download request for %s → %s", record.Filename, downloadUrl)
 
-	// Force download headers
-	c.Header("Content-Disposition",
-		fmt.Sprintf(`attachment; filename="%s"`, record.Filename))
-	c.Header("Content-Type", record.MimeType)
-	c.Header("Access-Control-Expose-Headers", "Content-Disposition")
-
-	// Stream file to client
-	io.Copy(c.Writer, resp.Body)
+	// ✅ For IPFS/external URLs: redirect directly (faster than proxying)
+	// The browser will handle Content-Disposition from the gateway
+	c.Redirect(http.StatusTemporaryRedirect, downloadUrl)
 
 	// Status update
 	col.UpdateOne(ctx,
