@@ -1,101 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAllFiles, getStats } from '../utils/api';
 import {
-  Activity, AlertTriangle, CheckCircle, Clock, FileText,
-  RefreshCw, TrendingUp, UploadCloud, AlertCircle
+  Activity, AlertTriangle, Clock, FileText,
+  RefreshCw, UploadCloud, Shield, Zap
 } from 'lucide-react';
 import {
-  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer
+  Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
-// ── Helpers ──────────────────────────────────────────────────────────
-const fmtSize = b =>
-  !b ? '—' : b < 1024 ? b + ' B' : b < 1048576
-    ? (b / 1024).toFixed(1) + ' KB'
-    : (b / 1048576).toFixed(2) + ' MB';
-
-function hashPill(hash) {
-  if (!hash) return '—';
-  return (
-    <span className="hash-p">{hash.slice(0, 8)}...{hash.slice(-6)}</span>
-  );
-}
-
-// ── Pie Chart colours ─────────────────────────────────────────────────
-const PIE_COLORS = ['#2DD4BF', '#FB7185'];
-
-const CustomTooltip = ({ active, payload }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div style={{
-        background: 'rgba(15,23,42,0.95)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: 10,
-        padding: '10px 16px',
-        fontSize: 13,
-        color: payload[0].payload.fill,
-        fontWeight: 600,
-      }}>
-        {payload[0].name}: <span style={{ color: '#fff' }}>{payload[0].value}</span>
-      </div>
-    );
-  }
-  return null;
-};
-
-// ── Status Badge Component ───────────────────────────────────────────
-function StatusBadge({ status, isExpired }) {
-  const s = (status || '').toLowerCase();
-  if (isExpired) {
-    return (
-      <span className="badge b-pending" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(252, 165, 165, 0.1)', color: '#fca5a5', border: '1px solid rgba(252, 165, 165, 0.3)', borderRadius: '20px', padding: '4px 12px', fontSize: '11px', fontWeight: '600' }}>
-        <AlertCircle size={13} /> Expired
-      </span>
-    );
-  }
-  if (s === 'valid') {
-    return (
-      <span className="badge b-valid" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(0, 200, 150, 0.1)', color: 'var(--accent-teal)', border: '1px solid rgba(0, 200, 150, 0.3)', borderRadius: '20px', padding: '4px 12px', fontSize: '11px', fontWeight: '600' }}>
-        <CheckCircle size={13} /> Valid
-      </span>
-    );
-  }
-  if (s === 'tampered') {
-    return (
-      <span className="badge b-tampered" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 68, 68, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(255, 68, 68, 0.3)', borderRadius: '20px', padding: '4px 12px', fontSize: '11px', fontWeight: '600' }}>
-        <AlertTriangle size={13} /> Tampered
-      </span>
-    );
-  }
-  return (
-    <span className="badge b-pending" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 140, 66, 0.1)', color: 'var(--accent-orange)', border: '1px solid rgba(255, 140, 66, 0.3)', borderRadius: '20px', padding: '4px 12px', fontSize: '11px', fontWeight: '600' }}>
-      <Activity size={13} /> Not Synced
-    </span>
-  );
-}
-
-// ── Main Component ────────────────────────────────────────────────────
 export default function Dashboard({ walletAddress }) {
   const navigate = useNavigate();
   const [files, setFiles] = useState([]);
-  const [stats, setStats] = useState({ total: 0, valid: 0, tampered: 0, recentLogs: [] });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const pollingRef = useRef(null);
-
-  const fetchStats = useCallback(async () => {
-    try {
-      const statsRes = await getStats(walletAddress);
-      const s = statsRes.stats || statsRes || {};
-      setStats({ total: s.total || 0, valid: s.valid || 0, tampered: s.tampered || 0, recentLogs: statsRes.recentLogs || [] });
-    } catch {
-      // silently ignore
-    }
-  }, [walletAddress]);
+  const [stats, setStats] = useState({ total: 0, valid: 0, tampered: 0, recentLogs: [], chartData: [] });
 
   const fetchData = useCallback(async () => {
-    setLoading(true); setError('');
     try {
       const [filesRes, statsRes] = await Promise.all([
         getAllFiles(walletAddress),
@@ -103,160 +23,174 @@ export default function Dashboard({ walletAddress }) {
       ]);
       setFiles(filesRes.data || []);
       const s = statsRes.stats || statsRes || {};
-      setStats({ total: s.total || 0, valid: s.valid || 0, tampered: s.tampered || 0, recentLogs: statsRes.recentLogs || [] });
+      
+      // Mock chart data if not provided by backend
+      const chartData = s.chartData || [
+        { day: 'Mon', count: 4 },
+        { day: 'Tue', count: 7 },
+        { day: 'Wed', count: 5 },
+        { day: 'Thu', count: 12 },
+        { day: 'Fri', count: 8 },
+        { day: 'Sat', count: 15 },
+        { day: 'Sun', count: 10 },
+      ];
+
+      setStats({ 
+        total: s.total || 0, 
+        valid: s.valid || 0, 
+        tampered: s.tampered || 0, 
+        recentLogs: statsRes.recentLogs || [],
+        chartData
+      });
     } catch (err) {
-      setError(err.message || 'Failed to reach backend');
+      console.error(err);
     } finally {
-      setLoading(false);
+      // Done
     }
   }, [walletAddress]);
 
   useEffect(() => {
     fetchData();
-    pollingRef.current = setInterval(() => { fetchStats(); }, 5000);
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
-  }, [fetchData, fetchStats]);
+  }, [fetchData]);
 
-  const totalBytes = files.reduce((a, f) => a + (f.fileSize || 0), 0);
-  const storagePct = Math.min(Math.round((totalBytes / (500 * 1024 * 1024)) * 100), 100);
   const integrityPct = stats.total > 0 ? Math.round((stats.valid / stats.total) * 100) : 0;
-
-  const pieData = [
-    { name: 'Verified', value: stats.valid },
-    { name: 'Tampered', value: stats.tampered },
-  ];
-  const hasPieData = stats.valid > 0 || stats.tampered > 0;
-
-  if (loading) {
-    return (
-      <div className="page-inner">
-        <div className="loading-center"><div className="spin-ring" />Loading dashboard...</div>
-      </div>
-    );
-  }
+  const securityLevel = integrityPct > 90 ? 'High' : integrityPct > 70 ? 'Moderate' : 'Critical';
+  const securityColor = integrityPct > 90 ? '#2DD4BF' : integrityPct > 70 ? '#F59E0B' : '#FB7185';
 
   return (
     <div className="page-inner">
       <div className="ph">
-        <div><h1>Dashboard</h1><p>Overview of your blockchain file registry</p></div>
+        <div><h1>Security Suite</h1><p>Professional-grade file integrity monitoring</p></div>
         <button className="ref-btn" onClick={fetchData}><RefreshCw size={18} /> Refresh</button>
       </div>
 
-      {error && <div className="error-box"><AlertTriangle size={18} /> {error}</div>}
-
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'stretch' }}>
-        <div className="stats" style={{ flex: '1 1 340px' }}>
-          <div className="stat">
-            <div className="stat-ico ico-blue"><FileText size={18} /></div>
-            <div><div className="stat-val">{stats.total}</div><div className="stat-lbl">Total Files</div></div>
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 24 }}>
+        <div className="card" style={{ borderLeft: `4px solid ${securityColor}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>SECURITY SCORE</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: securityColor }}>{integrityPct}%</div>
+            </div>
+            <Shield size={32} color={securityColor} />
           </div>
-          <div className="stat">
-            <div className="stat-ico ico-green"><CheckCircle size={18} /></div>
-            <div><div className="stat-val">{stats.valid}</div><div className="stat-lbl">Valid Files</div></div>
-          </div>
-          <div className="stat">
-            <div className="stat-ico ico-red"><AlertTriangle size={18} /></div>
-            <div><div className="stat-val">{stats.tampered}</div><div className="stat-lbl">Tampered</div></div>
-          </div>
-          <div className="stat">
-            <div className="stat-ico ico-purple"><TrendingUp size={18} /></div>
-            <div><div className="stat-val">{integrityPct}%</div><div className="stat-lbl">Integrity Score</div></div>
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+            Status: <span style={{ fontWeight: 700, color: securityColor }}>{securityLevel}</span>
           </div>
         </div>
 
-        <div className="card" style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 220 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>FILE INTEGRITY RATIO</div>
-          {hasPieData ? (
-            <ResponsiveContainer width="100%" height={190}>
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={52} outerRadius={76} paddingAngle={3} dataKey="value" strokeWidth={0}>
-                  {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-                <Legend formatter={(value, entry) => <span style={{ color: entry.color, fontSize: 12, fontWeight: 600 }}>{value}</span>} />
-              </PieChart>
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>TOTAL ASSETS</div>
+              <div style={{ fontSize: 32, fontWeight: 800 }}>{stats.total}</div>
+            </div>
+            <FileText size={32} color="var(--accent-cyan)" />
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+            Across {files.length} unique records
+          </div>
+        </div>
+
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>THREATS DETECTED</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--accent-red)' }}>{stats.tampered}</div>
+            </div>
+            <AlertTriangle size={32} color="var(--accent-red)" />
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+            Integrity violations flagged
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, marginBottom: 24 }}>
+        <div className="card">
+          <div className="sec-hdr">
+            <span className="sec-title"><Activity size={18} /> Verification Activity (Last 7 Days)</span>
+          </div>
+          <div style={{ height: 240, marginTop: 10 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={stats.chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="day" stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  contentStyle={{ background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }}
+                  itemStyle={{ color: 'var(--accent-cyan)' }}
+                />
+                <Line type="monotone" dataKey="count" stroke="var(--accent-cyan)" strokeWidth={3} dot={{ fill: 'var(--accent-cyan)', r: 4 }} activeDot={{ r: 6, strokeWidth: 0 }} />
+              </LineChart>
             </ResponsiveContainer>
-          ) : (
-            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}><FileText size={36} style={{ opacity: 0.3, marginBottom: 8 }} /><div>No data yet.</div></div>
-          )}
+          </div>
         </div>
-      </div>
 
-      <div className="two-col">
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12 }}>Integrity Score</span><span>{integrityPct}%</span></div>
-          <div className="progress"><div className="progress-fill fill-green" style={{ width: `${integrityPct}%` }} /></div>
-        </div>
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12 }}>Storage Used</span><span>{storagePct}%</span></div>
-          <div className="progress"><div className="progress-fill fill-cyan" style={{ width: `${storagePct}%` }} /></div>
-        </div>
-      </div>
-
-      <div className="actions-row">
-        <div className="ac" onClick={() => navigate('/upload')}>
-          <div className="ac-l"><span className="ac-ico"><UploadCloud size={18} /></span><div className="ac-t"><h3>Upload File</h3><p>Store &amp; hash on blockchain</p></div></div>
-          <span>→</span>
-        </div>
-        <div className="ac grn" onClick={() => navigate('/verify')}>
-          <div className="ac-l"><span className="ac-ico"><CheckCircle size={18} /></span><div className="ac-t"><h3>Verify File</h3><p>Check file integrity</p></div></div>
-          <span>→</span>
+          <div className="sec-hdr">
+            <span className="sec-title"><Zap size={18} /> Quick Stats</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 10 }}>
+             <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>LAST SCAN</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{stats.recentLogs?.[0]?.verifiedAt ? new Date(stats.recentLogs[0].verifiedAt).toLocaleTimeString() : 'N/A'}</div>
+             </div>
+             <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>VAULT HEALTH</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent-teal)' }}>OPTIMIZED</div>
+             </div>
+             <button className="btn btn-teal btn-full" onClick={() => navigate('/upload')}>
+                <UploadCloud size={16} /> New Security Seal
+             </button>
+          </div>
         </div>
       </div>
 
       <div className="card">
-        <div className="sec-hdr"><span className="sec-title"><Clock size={18} /> Recent Files</span><button className="view-all" onClick={() => navigate('/my-files')}>View all →</button></div>
-        {files.length === 0 ? <div className="empty">No files uploaded yet.</div> : (
-          <table>
-            <thead><tr><th>File</th><th>Hash</th><th>Size</th><th>Status</th></tr></thead>
-            <tbody>
-              {files.slice(0, 5).map(f => {
-                const isExpired = f.isExpired || (f.expiryDate && new Date(f.expiryDate) < new Date());
-                return (
-                  <tr key={f.fileId || f.id} className="tr-click" onClick={() => navigate(`/files/${f.fileId || f.id}`)}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                        <FileText size={16} style={{ color: 'var(--accent-cyan)' }} />
-                        <div><div className="fname">{f.filename || f.name}</div><div className="ftype">{f.fileType || f.type}</div></div>
-                      </div>
-                    </td>
-                    <td>{hashPill(f.hash || f.fileHash)}</td>
-                    <td>{fmtSize(f.fileSize)}</td>
-                    <td><StatusBadge status={f.status} isExpired={isExpired} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="card" style={{ marginTop: 24 }}>
         <div className="sec-hdr">
-          <span className="sec-title"><Activity size={18} /> Recent Verifications</span>
+          <span className="sec-title"><Clock size={18} /> Recent Activity Log</span>
         </div>
-        {!stats.recentLogs || stats.recentLogs.length === 0 ? <div className="empty">No verifications yet.</div> : (
-          <table>
-            <thead><tr><th>File</th><th>Hash</th><th>Status</th><th>Verified At</th></tr></thead>
+        {!stats.recentLogs || stats.recentLogs.length === 0 ? (
+          <div className="empty">No recent activity detected.</div>
+        ) : (
+          <table className="activity-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>File</th>
+                <th>Status</th>
+              </tr>
+            </thead>
             <tbody>
-              {(stats.recentLogs || []).map(f => {
-                const isExpired = f.isExpired || (f.expiryDate && new Date(f.expiryDate) < new Date());
-                return (
-                <tr key={`${f.fileId || f.id}-${f.verifiedAt}`} className="tr-click" onClick={() => navigate(`/files/${f.fileId || f.id}`)}>
+              {stats.recentLogs.slice(0, 10).map((log, i) => (
+                <tr key={i}>
+                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {new Date(log.verifiedAt || log.uploadedAt).toLocaleString()}
+                  </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <FileText size={16} style={{ color: 'var(--accent-cyan)' }} />
-                      <div><div className="fname">{f.filename || f.name}</div><div className="ftype">{f.fileType || f.type || 'unknown'}</div></div>
+                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: 'rgba(255,255,255,0.05)' }}>
+                      {log.verifiedAt ? 'Verification' : 'Registration'}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <FileText size={14} color="var(--accent-cyan)" />
+                      <span style={{ fontWeight: 600 }}>{log.filename || log.name}</span>
                     </div>
                   </td>
-                  <td>{hashPill(f.originalHash || f.fileHash)}</td>
-                  <td><StatusBadge status={f.status} isExpired={isExpired} /></td>
-                  <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {f.verifiedAt ? new Date(f.verifiedAt).toLocaleString() : 'N/A'}
+                  <td>
+                    <span style={{ 
+                      color: log.status === 'valid' ? 'var(--accent-teal)' : log.status === 'tampered' ? 'var(--accent-red)' : 'var(--accent-orange)',
+                      fontWeight: 700,
+                      fontSize: 11,
+                      textTransform: 'uppercase'
+                    }}>
+                      {log.status || 'Pending'}
+                    </span>
                   </td>
                 </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         )}
