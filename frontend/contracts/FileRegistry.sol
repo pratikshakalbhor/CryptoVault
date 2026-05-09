@@ -5,6 +5,8 @@ contract FileRegistry {
 
     struct File {
         address owner;
+        string  ipfsCID;
+        address signerAddress;
         uint256 timestamp;
         bool    exists;
     }
@@ -14,34 +16,35 @@ contract FileRegistry {
 
     event FileRegistered(
         string  fileHash,
+        string  ipfsCID,
         address owner,
+        address signer,
         uint256 timestamp
     );
 
-    // ✅ Sirf fileHash — 1 param only!
-    function registerFile(string calldata fileHash) external {
-        if (files[fileHash].exists) {
-            emit FileRegistered(fileHash, msg.sender, block.timestamp);
-            return; // No revert — silently return
-        }
+    // ✅ Updated with ipfsCID and automatic signer tracking
+    function registerFile(string calldata fileHash, string calldata ipfsCID) external {
+        require(!files[fileHash].exists, "File already registered");
         files[fileHash] = File({
-            owner:     msg.sender,
-            timestamp: block.timestamp,
-            exists:    true
+            owner:         msg.sender,
+            ipfsCID:       ipfsCID,
+            signerAddress: msg.sender,
+            timestamp:     block.timestamp,
+            exists:        true
         });
         userFiles[msg.sender].push(fileHash);
-        emit FileRegistered(fileHash, msg.sender, block.timestamp);
+        emit FileRegistered(fileHash, ipfsCID, msg.sender, msg.sender, block.timestamp);
     }
 
     function verifyFile(string calldata fileHash)
         external view
-        returns (bool valid, address owner, uint256 timestamp)
+        returns (bool valid, address owner, string memory ipfsCID, address signer, uint256 timestamp)
     {
         if (!files[fileHash].exists) {
-            return (false, address(0), 0);
+            return (false, address(0), "", address(0), 0);
         }
         File memory f = files[fileHash];
-        return (true, f.owner, f.timestamp);
+        return (true, f.owner, f.ipfsCID, f.signerAddress, f.timestamp);
     }
 
     function getOwnerFiles(address user)
