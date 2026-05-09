@@ -77,23 +77,37 @@ FileProof uses a **Triple-Check Verification System** (Local vs. DB vs. Blockcha
 ```text
 ChainLock/
 ├── 📁 frontend/                     # React Vite Application
-│   ├── src/
-│   │   ├── pages/                   # App Views (Dashboard, Upload, Verify, Trash, etc.)
-│   │   ├── components/              # Reusable UI (Sidebar, Topbar, Modals)
-│   │   ├── utils/                   # API bindings, ethers.js config, animation variants
+│   ├── 📁 src/
+│   │   ├── 📁 pages/                # App Views (Dashboard, Upload, Verify, Trash, etc.)
+│   │   ├── 📁 components/           # Reusable UI (Sidebar, Topbar, Modals, Breadcrumbs)
+│   │   ├── 📁 context/              # React Context (Auth, Blockchain state)
+│   │   ├── 📁 utils/                # API bindings, ethers.js config, animation variants
+│   │   ├── 📁 styles/               # Component-specific styles
 │   │   └── index.css                # Global Tailwind styles & Glassmorphic tokens
+│   ├── 📁 contracts/                # Smart Contracts (Solidity)
+│   │   ├── FileRegistry.sol         # Core Registry Logic
+│   │   ├── CryptoVault.sol          # Multi-functional vault logic
+│   │   └── 📁 abi/                  # Compiled Contract ABIs (JSON)
 │   └── package.json
 │
-├── 📁 go-backend/                   # Go API Server
+├── 📁 go-backend/                   # Go API Server (Gin Framework)
 │   ├── main.go                      # Application Entry Point
-│   ├── database/db.go               # MongoDB Connection Manager
-│   ├── handlers/                    # REST API Controllers (Upload, Verify, Trash)
-│   ├── models/file.go               # BSON/JSON Data Models
-│   └── routes/routes.go             # Gin Router Configuration
+│   ├── 📁 database/                 # MongoDB Connection Manager (db.go)
+│   ├── 📁 handlers/                 # REST API Controllers
+│   │   ├── upload.go                # File hashing & Storage logic
+│   │   ├── verify.go                # Integrity check & Heuristic audit
+│   │   ├── files.go                 # File management & Trash logic
+│   │   ├── notifications.go         # System alert management
+│   │   └── certificate.go           # PDF Certificate generation
+│   ├── 📁 models/                   # BSON/JSON Data Models (file.go)
+│   ├── 📁 routes/                   # Gin Router Configuration (routes.go)
+│   ├── 📁 middleware/               # Auth & Security Middlewares
+│   ├── 📁 utils/                    # Helper Utilities
+│   │   ├── pinata.go                # IPFS Pinata Integration
+│   │   └── signature.go             # Digital Signature verification
+│   └── 📁 abi/                      # Go bindings for Smart Contracts
 │
-└── 📁 contracts/                    # Solidity Smart Contracts
-    ├── FileRegistry.sol             # Ethereum Logic
-    └── abi.json                     # Contract ABI
+└── render.yaml                      # Render.com Deployment Config
 ```
 
 ---
@@ -185,12 +199,4 @@ go run main.go
 
 ## 👨‍💻 Developed By
 
-**Pratiksha Kalbhor**
-- GitHub: [@pratikshakalbhor](https://github.com/pratikshakalbhor)
-- Project: FileProof (ChainLock)
 
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
