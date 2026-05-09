@@ -7,8 +7,6 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,10 +18,7 @@ import (
 	"cryptovault/utils"
 )
 
-func init() {
-	os.MkdirAll("uploads", 0755)
-	os.MkdirAll("backup", 0755)
-}
+
 
 func UploadFile(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")
@@ -34,33 +29,27 @@ func UploadFile(c *gin.Context) {
 	defer file.Close()
 
 	wallet := strings.ToLower(c.PostForm("wallet"))
+	signature := c.PostForm("signature")
+	
 	if wallet == "" {
 		wallet = strings.ToLower(c.Request.FormValue("walletAddress"))
 	}
 	parentFileId := c.PostForm("parentFileId")
 	versionNote := c.PostForm("versionNote")
 
-	// 🔍 DEBUG LOGS
-	log.Printf("📥 New Upload Request:")
-	log.Printf("   Wallet: %s", wallet)
-	log.Printf("   File:   %s", header.Filename)
-
 	if wallet == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Wallet address required"})
 		return
 	}
 
-	// 📂 SAVE FILE LOCALLY
-	uploadPath := filepath.Join("uploads", header.Filename)
-	out, err := os.Create(uploadPath)
-	if err != nil {
-		log.Printf("❌ Failed to create file locally: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file locally"})
-		return
+	// 🛡️ SIGNATURE VERIFICATION
+	if signature != "" {
+		// We expect the frontend to sign the SHA-256 hash of the file bytes
+		// But for the sake of the initial verify, we need the hash.
+		// We'll calculate it below, so let's move signature check after hash generation.
 	}
-	defer out.Close()
 
-	// Read file and write to local storage
+	// Read file bytes for hashing
 	fileBytes, err := io.ReadAll(file)
 	if err != nil {
 		log.Printf("❌ Failed to read uploaded file: %v", err)
@@ -68,17 +57,47 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	_, err = out.Write(fileBytes)
-	if err != nil {
-		log.Printf("❌ Failed to write file locally: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file locally"})
+	// Hash (stored WITHOUT 0x prefix for consistency)
+	fileHash := strings.ToLower(utils.GenerateSHA256FromBytes(fileBytes))
+
+	collection := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 🛡️ DUPLICATE PREVENTION (Early Check) — check both with and without 0x prefix
+	var existing models.FileRecord
+	if err := collection.FindOne(ctx, bson.M{"$or": []bson.M{
+		{"originalHash": fileHash},
+		{"originalHash": "0x" + fileHash},
+	}}).Decode(&existing); err == nil {
+		log.Printf("⚠️ File already in DB: %s", existing.FileID)
+		c.JSON(http.StatusOK, gin.H{
+			"success":  true,
+			"fileId":   existing.FileID,
+			"publicId": existing.PublicID,
+			"fileHash": fileHash,
+			"filename": existing.Filename,
+			"message":  "File already registered",
+			"existing": true,
+		})
 		return
 	}
 
-	log.Printf("💾 File saved locally: %s", uploadPath)
-
-	// Hash
-	fileHash := utils.GenerateSHA256FromBytes(fileBytes)
+	// 🛡️ SIGNATURE VERIFICATION (Continued)
+	if signature != "" {
+		recoveredAddr, err := utils.RecoverSigner(fileHash, signature)
+		if err != nil {
+			log.Printf("❌ Signature recovery failed: %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid digital signature"})
+			return
+		}
+		if recoveredAddr != wallet {
+			log.Printf("❌ Signer mismatch: %s != %s", recoveredAddr, wallet)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Signature does not match wallet address"})
+			return
+		}
+		log.Printf("✅ Digital Signature Verified for: %s", recoveredAddr)
+	}
 
 	// Encrypt
 	encryptedBytes, err := utils.EncryptAES(fileBytes)
@@ -90,8 +109,17 @@ func UploadFile(c *gin.Context) {
 	// Upload to IPFS
 	ipfsURL, ipfsCID, err := utils.UploadToPinata(encryptedBytes, header.Filename)
 	if err != nil {
-		ipfsURL = "mock_url"
-		ipfsCID = "mock_cid_" + header.Filename
+		log.Printf("⚠️ Pinata upload failed: %v — using fallback", err)
+		ipfsURL = ""
+		ipfsCID = ""
+	}
+	log.Printf("📦 IPFS Upload — URL: %s | CID: %s", ipfsURL, ipfsCID)
+
+	// Accept optional override from frontend (Cloudinary or other storage)
+	if frontendUrl := c.PostForm("encryptedUrl"); frontendUrl != "" {
+		ipfsURL = frontendUrl
+	} else if cloudUrl := c.PostForm("cloudinaryUrl"); cloudUrl != "" {
+		ipfsURL = cloudUrl
 	}
 
 	// Real blockchain TX will be stored after frontend confirmation
@@ -100,16 +128,22 @@ func UploadFile(c *gin.Context) {
 	fileID := fmt.Sprintf("FILE-%d", time.Now().Unix())
 	publicID := randomString(10)
 
-	collection := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
-	// Expiry
+
+	// Expiry — try multiple formats (ISO 8601 from frontend, or date-only)
 	expiryStr := c.PostForm("expiryDate")
 	var expiryDate *time.Time
 	if expiryStr != "" {
-		t, _ := time.Parse("2006-01-02", expiryStr)
-		expiryDate = &t
+		// Try ISO 8601 first (from frontend datetime-local: "2026-05-10T10:30:00.000Z")
+		if t, e := time.Parse(time.RFC3339, expiryStr); e == nil {
+			expiryDate = &t
+		} else if t, e := time.Parse("2006-01-02T15:04:05", expiryStr); e == nil {
+			expiryDate = &t
+		} else if t, e := time.Parse("2006-01-02", expiryStr); e == nil {
+			expiryDate = &t
+		} else {
+			log.Printf("⚠️ Could not parse expiry date: %s", expiryStr)
+		}
 	}
 
 	// VERSION LOGIC FIX
@@ -148,26 +182,7 @@ func UploadFile(c *gin.Context) {
 			publicID = existing.PublicID
 		}
 	} else {
-		// 🛡️ DUPLICATE PREVENTION (Requirement #1)
-		var duplicate models.FileRecord
-		dupFilter := bson.M{
-			"walletAddress": wallet,
-			"originalHash": fileHash,
-			"isDeleted":    bson.M{"$ne": true},
-		}
-		err := collection.FindOne(ctx, dupFilter).Decode(&duplicate)
-		if err == nil {
-			log.Printf("⚠️ Duplicate file detected for wallet %s. Returning existing record.", wallet)
-			c.JSON(http.StatusOK, gin.H{
-				"message":  "File already exists",
-				"fileId":   duplicate.FileID,
-				"publicId": duplicate.PublicID,
-				"filename": duplicate.Filename,
-				"txHash":   duplicate.TxHash,
-				"isDuplicate": true,
-			})
-			return
-		}
+
 
 		// 🛡️ TX HASH VALIDATION (Requirement #4)
 		// Try to get txHash from frontend first, else use mock
@@ -187,8 +202,8 @@ func UploadFile(c *gin.Context) {
 			PublicID:      publicID,
 			Filename:      header.Filename,
 			OriginalHash:  fileHash,
-			EncryptedURL:  ipfsURL,
-			IpfsCID:       ipfsCID,
+			EncryptedURL:  ipfsURL,  // ✅ Pinata IPFS URL (or frontend override)
+			IpfsCID:       ipfsCID,  // ✅ IPFS CID for gateway fallback
 			FileSize:      header.Size,
 			MimeType:      header.Header.Get("Content-Type"),
 			WalletAddress: wallet,
@@ -198,26 +213,36 @@ func UploadFile(c *gin.Context) {
 			UploadedAt:    time.Now(),
 			Version:       1,
 		}
+		log.Printf("💾 Saving record — fileId: %s | hash: %s | ipfs: %s | url: %s",
+			record.FileID, record.OriginalHash, record.IpfsCID, record.EncryptedURL)
 
 		result, err := collection.InsertOne(ctx, record)
 		if err != nil {
 			log.Printf("❌ MongoDB INSERT ERROR: %v", err)
-			c.JSON(500, gin.H{"error": "DB save failed: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Database save failed: " + err.Error(),
+			})
 			return
-		} else {
-			log.Printf("✅ MongoDB INSERT SUCCESS: %v", result.InsertedID)
 		}
+		log.Printf("✅ MongoDB INSERT SUCCESS: fileId=%s, id=%v", record.FileID, result.InsertedID)
 	}
 
-	//  FINAL RESPONSE FIX
-	c.JSON(http.StatusOK, gin.H{
-		"fileId":   fileID,
-		"publicId": publicID,
-		"filename": header.Filename,
-		"fileHash": fileHash,
-		"ipfsCID":  ipfsCID,
-		"fileSize": header.Size,
-		"txHash":   txHash,
+	// Notification
+	NotifyUpload(wallet, header.Filename, fileID)
+
+	//  FINAL RESPONSE
+	c.JSON(http.StatusCreated, gin.H{
+		"success":      true,
+		"fileId":       fileID,
+		"publicId":     publicID,
+		"filename":     header.Filename,
+		"fileHash":     fileHash,
+		"ipfsCID":      ipfsCID,
+		"ipfsURL":      ipfsURL,
+		"encryptedUrl": ipfsURL, // alias for frontend compatibility
+		"fileSize":     header.Size,
+		"txHash":       txHash,
+		"message":      "File uploaded! Seal on blockchain.",
 	})
 }
 
