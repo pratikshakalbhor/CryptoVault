@@ -23,7 +23,7 @@ export default function Dashboard({ walletAddress }) {
       ]);
       setFiles(filesRes.data || []);
       const s = statsRes.stats || statsRes || {};
-      
+
       // Mock chart data if not provided by backend
       const chartData = s.chartData || [
         { day: 'Mon', count: 4 },
@@ -35,10 +35,10 @@ export default function Dashboard({ walletAddress }) {
         { day: 'Sun', count: 10 },
       ];
 
-      setStats({ 
-        total: s.total || 0, 
-        valid: s.valid || 0, 
-        tampered: s.tampered || 0, 
+      setStats({
+        total: s.total || 0,
+        valid: s.valid || 0,
+        tampered: s.tampered || 0,
         recentLogs: statsRes.recentLogs || [],
         chartData
       });
@@ -106,17 +106,17 @@ export default function Dashboard({ walletAddress }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, marginBottom: 24 }}>
-        <div className="card">
+        <div className="card" style={{ minWidth: 0 }}>
           <div className="sec-hdr">
             <span className="sec-title"><Activity size={18} /> Verification Activity (Last 7 Days)</span>
           </div>
-          <div style={{ height: 240, marginTop: 10 }}>
+          <div style={{ width: '100%', height: 240, minWidth: 0, marginTop: 10 }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={stats.chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="day" stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ background: '#0F172A', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }}
                   itemStyle={{ color: 'var(--accent-cyan)' }}
                 />
@@ -131,17 +131,17 @@ export default function Dashboard({ walletAddress }) {
             <span className="sec-title"><Zap size={18} /> Quick Stats</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 10 }}>
-             <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>LAST SCAN</div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{stats.recentLogs?.[0]?.verifiedAt ? new Date(stats.recentLogs[0].verifiedAt).toLocaleTimeString() : 'N/A'}</div>
-             </div>
-             <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>VAULT HEALTH</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent-teal)' }}>OPTIMIZED</div>
-             </div>
-             <button className="btn btn-teal btn-full" onClick={() => navigate('/upload')}>
-                <UploadCloud size={16} /> New Security Seal
-             </button>
+            <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>LAST SCAN</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{stats.recentLogs?.[0]?.verifiedAt ? new Date(stats.recentLogs[0].verifiedAt).toLocaleTimeString() : 'N/A'}</div>
+            </div>
+            <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>VAULT HEALTH</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent-teal)' }}>OPTIMIZED</div>
+            </div>
+            <button className="btn btn-teal btn-full" onClick={() => navigate('/upload')}>
+              <UploadCloud size={16} /> New Security Seal
+            </button>
           </div>
         </div>
       </div>
@@ -180,7 +180,7 @@ export default function Dashboard({ walletAddress }) {
                     </div>
                   </td>
                   <td>
-                    <span style={{ 
+                    <span style={{
                       color: log.status === 'valid' ? 'var(--accent-teal)' : log.status === 'tampered' ? 'var(--accent-red)' : 'var(--accent-orange)',
                       fontWeight: 700,
                       fontSize: 11,
