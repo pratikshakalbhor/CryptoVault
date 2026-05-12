@@ -146,8 +146,8 @@ func GetFileVersions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
 		"fileId":   fileID,
-		"versions": record.Versions,
-		"total":    len(record.Versions),
+		// "versions": record.Versions,
+		// "total":    len(record.Versions),
 	})
 }
 
@@ -194,14 +194,7 @@ func GetStats(c *gin.Context) {
 	}
 	revoked, _  := collection.CountDocuments(ctx, revokedFilter)
 	
-	trashedFilter := bson.M{"isDeleted": true}
-	if wallet != "" {
-		trashedFilter["walletAddress"] = bson.M{
-			"$regex":   "^" + wallet + "$",
-			"$options": "i",
-		}
-	}
-	trashed, _  := collection.CountDocuments(ctx, trashedFilter)
+
 
 	// Fetch latest 5 verification logs for this wallet
 	var recentLogs []models.FileRecord
@@ -230,7 +223,6 @@ func GetStats(c *gin.Context) {
 			Valid:    valid,
 			Tampered: tampered,
 			Revoked:  revoked,
-			Trashed:  trashed,
 		},
 		"recentLogs": recentLogs,
 	})
@@ -334,54 +326,7 @@ func UpdateTxHash(c *gin.Context) {
 // Trash & Restore Features
 // ─────────────────────────────────────────
 
-// ── RESTORE FILE ───────────────────────────────
-// Frontend Restore button → he call hoto
-func RestoreFile(c *gin.Context) {
-	fileId := c.Param("id")
 
-	col := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var record models.FileRecord
-	if err := col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
-		return
-	}
-
-	// ── Restore = status back to valid ──
-	now := time.Now()
-	col.UpdateOne(ctx,
-		bson.M{"fileId": fileId},
-		bson.M{"$set": bson.M{
-			"status":    "valid",
-			"updatedAt": now,
-		}},
-	)
-
-	// ── Notification create karo ──
-	CreateNotification(
-		record.WalletAddress,
-		"🔄 File '"+record.Filename+"' restored successfully",
-		"success",
-		fileId,
-	)
-
-	// ── Response with download URL ──
-	restoreUrl := record.EncryptedURL
-	if restoreUrl == "" {
-		restoreUrl = record.IpfsCID
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
-		"message":    "File restored successfully",
-		"fileId":     fileId,
-		"restoreUrl": restoreUrl,
-		"filename":   record.Filename,
-		"status":     "valid",
-	})
-}
 
 // ── TRASH FILE ─────────────────────────────────
 func TrashFile(c *gin.Context) {
@@ -498,48 +443,4 @@ func PublicVerify(c *gin.Context) {
 		"network":    "Ethereum Sepolia Testnet",
 	})
 }
-
-// ── DOWNLOAD ORIGINAL FILE ──────────────────────
-func DownloadOriginal(c *gin.Context) {
-	fileId := c.Param("id")
-
-	col := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	var record models.FileRecord
-	if err := col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
-		return
-	}
-
-	// Build download URL with fallbacks
-	downloadUrl := record.EncryptedURL
-	if downloadUrl == "" && record.IpfsCID != "" {
-		downloadUrl = "https://gateway.pinata.cloud/ipfs/" + record.IpfsCID
-	}
-	if downloadUrl == "" && record.IpfsCID != "" {
-		downloadUrl = "https://ipfs.io/ipfs/" + record.IpfsCID
-	}
-	if downloadUrl == "" {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":    "Original file URL not available",
-			"fileId":   record.FileID,
-			"filename": record.Filename,
-			"hash":     record.OriginalHash,
-		})
-		return
-	}
-
-	log.Printf("⬇️ Download request for %s → %s", record.Filename, downloadUrl)
-
-	// ✅ For IPFS/external URLs: redirect directly (faster than proxying)
-	// The browser will handle Content-Disposition from the gateway
-	c.Redirect(http.StatusTemporaryRedirect, downloadUrl)
-
-	// Status update
-	col.UpdateOne(ctx,
-		bson.M{"fileId": fileId},
-		bson.M{"$set": bson.M{"status": "valid"}},
-	)
-}
+

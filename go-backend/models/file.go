@@ -2,48 +2,46 @@ package models
 
 import "time"
 
-// VersionRecord — specific version details
-type VersionRecord struct {
-	VersionNumber int       `json:"versionNumber" bson:"versionNumber"`
-	Hash          string    `json:"hash"          bson:"hash"`
-	TxHash        string    `json:"txHash"        bson:"txHash"`
-	Timestamp     time.Time `json:"timestamp"     bson:"timestamp"`
-	Note          string    `json:"note"          bson:"note"`
-}
-
-// FileRecord — MongoDB madhe store hoto
 type FileRecord struct {
-	FileID        string          `json:"fileId"        bson:"fileId"`
-	PublicID      string          `json:"publicId"      bson:"publicId"` // Navin — public verification sathi
-	Filename      string          `json:"fileName"      bson:"fileName"`
-	OriginalHash  string          `json:"originalHash"  bson:"originalHash"`
-	EncryptedURL  string          `json:"encryptedURL"  bson:"encryptedURL"`
-	IpfsCID       string          `json:"ipfsCID"       bson:"ipfsCID"` // Source of truth CID
-	FileSize      int64           `json:"fileSize"      bson:"fileSize"`
-	MimeType      string          `json:"mimeType"      bson:"mimeType"`
-	WalletAddress string          `json:"owner"         bson:"walletAddress"`
-	TxHash        string          `json:"txHash"        bson:"txHash"`
-	Status        string          `json:"status"        bson:"status"`
-	IsRevoked     bool            `json:"isRevoked"     bson:"isRevoked"`
-	ExpiryDate    *time.Time      `json:"expiryDate"    bson:"expiryDate"`
-	IsExpired     bool            `json:"isExpired"     bson:"isExpired"`
-	UploadedAt    time.Time       `json:"uploadedAt"    bson:"uploadedAt"`
-	VerifiedAt    *time.Time      `json:"verifiedAt"    bson:"verifiedAt"`
-	DeletedAt     *time.Time      `json:"deletedAt"     bson:"deletedAt"` // Soft delete timestamp
-	IsDeleted     bool            `json:"isDeleted"     bson:"isDeleted"` // Soft delete flag
-	Version       int             `json:"version"       bson:"version"`
-	Versions      []VersionRecord `json:"versions"      bson:"versions"` // Audit Trail sathi
-	Visibility    string          `json:"visibility"    bson:"visibility"`    // private, public, shared
-	SharedWith    []string        `json:"sharedWith"    bson:"sharedWith"`    // wallet addresses
-	GasUsed       string          `json:"gasUsed"       bson:"gasUsed"`
-	BlockNumber   string          `json:"blockNumber"   bson:"blockNumber"`
+	FileID        string     `json:"fileId"        bson:"fileId"`
+	Filename      string     `json:"filename"      bson:"filename"`
+	OriginalHash  string     `json:"originalHash"  bson:"originalHash"`
+	EncryptedURL  string     `json:"encryptedUrl"  bson:"encryptedUrl"`
+	IpfsCID       string     `json:"ipfsCID"       bson:"ipfsCID"`
+	BackupPath    string     `json:"backupPath"    bson:"backupPath"`
+	FileSize      int64      `json:"fileSize"      bson:"fileSize"`
+	MimeType      string     `json:"mimeType"      bson:"mimeType"`
+	WalletAddress string     `json:"walletAddress" bson:"walletAddress"`
+	TxHash        string     `json:"txHash"        bson:"txHash"`
+	BlockNumber   uint64     `json:"blockNumber"   bson:"blockNumber"`
+	Status        string     `json:"status"        bson:"status"`
+	IsRevoked     bool       `json:"isRevoked"     bson:"isRevoked"`
+	IsTrashed     bool       `json:"isTrashed"     bson:"isTrashed"`
+	TrashedAt     *time.Time `json:"trashedAt"     bson:"trashedAt"`
+	Visibility    string     `json:"visibility"    bson:"visibility"`
+	SharedWith    []string   `json:"sharedWith"    bson:"sharedWith"`
+	ExpiryDate    *time.Time `json:"expiryDate"    bson:"expiryDate"`
+	ParentFileID  string     `json:"parentFileId"  bson:"parentFileId"`
+	Version       int        `json:"version"       bson:"version"`
+	VersionNote   string     `json:"versionNote"   bson:"versionNote"`
+	PublicID      string     `json:"publicId"      bson:"publicId"`
+	UploadedAt    time.Time  `json:"uploadedAt"    bson:"uploadedAt"`
+	VerifiedAt    *time.Time `json:"verifiedAt"    bson:"verifiedAt"`
+	UpdatedAt     *time.Time `json:"updatedAt"     bson:"updatedAt"`
 }
 
-// Stats — Dashboard sathi
+type VersionRecord struct {
+	Version     int       `json:"version"     bson:"version"`
+	Hash        string    `json:"hash"        bson:"hash"`
+	Timestamp   time.Time `json:"timestamp"   bson:"timestamp"`
+	StoragePath string    `json:"storagePath" bson:"storagePath"`
+	TxHash      string    `json:"txHash"      bson:"txHash"`
+}
+
 type Stats struct {
 	Total    int64 `json:"total"`
 	Valid    int64 `json:"valid"`
 	Tampered int64 `json:"tampered"`
 	Revoked  int64 `json:"revoked"`
-	Trashed  int64 `json:"trashed"`
+	Pending  int64 `json:"pending"`
 }

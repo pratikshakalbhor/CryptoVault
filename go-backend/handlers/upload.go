@@ -18,8 +18,6 @@ import (
 	"cryptovault/utils"
 )
 
-
-
 func UploadFile(c *gin.Context) {
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
@@ -30,12 +28,11 @@ func UploadFile(c *gin.Context) {
 
 	wallet := strings.ToLower(c.PostForm("wallet"))
 	signature := c.PostForm("signature")
-	
+
 	if wallet == "" {
 		wallet = strings.ToLower(c.Request.FormValue("walletAddress"))
 	}
 	parentFileId := c.PostForm("parentFileId")
-	versionNote := c.PostForm("versionNote")
 
 	if wallet == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Wallet address required"})
@@ -128,8 +125,6 @@ func UploadFile(c *gin.Context) {
 	fileID := fmt.Sprintf("FILE-%d", time.Now().Unix())
 	publicID := randomString(10)
 
-
-
 	// Expiry — try multiple formats (ISO 8601 from frontend, or date-only)
 	expiryStr := c.PostForm("expiryDate")
 	var expiryDate *time.Time
@@ -160,7 +155,7 @@ func UploadFile(c *gin.Context) {
 					"$set": bson.M{
 						"originalHash": fileHash,
 						"ipfsCID":      ipfsCID,
-						"encryptedURL":  ipfsURL,
+						"encryptedURL": ipfsURL,
 						"txHash":       txHash,
 						"fileSize":     header.Size,
 						"mimeType":     header.Header.Get("Content-Type"),
@@ -169,11 +164,10 @@ func UploadFile(c *gin.Context) {
 					},
 					"$push": bson.M{
 						"versions": models.VersionRecord{
-							VersionNumber: newVersion,
-							Hash:          ipfsCID, // Store CID in versions too
-							TxHash:        txHash,
-							Timestamp:     time.Now(),
-							Note:          versionNote,
+							Version:   newVersion,
+							Hash:      ipfsCID,
+							TxHash:    txHash,
+							Timestamp: time.Now(),
 						},
 					},
 				})
@@ -182,7 +176,6 @@ func UploadFile(c *gin.Context) {
 			publicID = existing.PublicID
 		}
 	} else {
-
 
 		// 🛡️ TX HASH VALIDATION (Requirement #4)
 		// Try to get txHash from frontend first, else use mock
@@ -202,8 +195,8 @@ func UploadFile(c *gin.Context) {
 			PublicID:      publicID,
 			Filename:      header.Filename,
 			OriginalHash:  fileHash,
-			EncryptedURL:  ipfsURL,  // ✅ Pinata IPFS URL (or frontend override)
-			IpfsCID:       ipfsCID,  // ✅ IPFS CID for gateway fallback
+			EncryptedURL:  ipfsURL, // ✅ Pinata IPFS URL (or frontend override)
+			IpfsCID:       ipfsCID, // ✅ IPFS CID for gateway fallback
 			FileSize:      header.Size,
 			MimeType:      header.Header.Get("Content-Type"),
 			WalletAddress: wallet,
