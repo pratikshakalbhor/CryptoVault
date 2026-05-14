@@ -273,6 +273,7 @@ export default function Verify({ onNotify, walletAddress }) {
   const [result,     setResult]     = useState(null);
   const [activeStep, setActiveStep] = useState(0);
   const [copied,     setCopied]     = useState('');
+  const [restoredPath, setRestoredPath] = useState(null); // ✅ Tracking restore state
 
   // Parse URL params
   useEffect(() => {
@@ -338,15 +339,50 @@ export default function Verify({ onNotify, walletAddress }) {
 
   const handleRestore = async () => {
     if (!result?.fileId) return;
+    setLoading(true);
     try {
-      const downloadUrl = `${API}/files/${result.fileId}/download`;
-      window.open(downloadUrl, '_blank');
-
-      await fetch(`${API}/files/${result.fileId}/restore`, { method: 'POST' });
-      toast.success('⬇️ Restoring original file...');
-      if (typeof onNotify === 'function') onNotify('✅ File restored!', 'success');
+      const { restoreFile } = await import('../utils/api');
+      const data = await restoreFile(result.fileId);
+      
+      if (data.success) {
+        setRestoredPath(data.downloadPath);
+        toast.success('✔ Original file restored successfully');
+        if (typeof onNotify === 'function') onNotify('✅ File restored!', 'success');
+      } else {
+        throw new Error(data.message || 'Restore failed');
+      }
     } catch (err) {
       toast.error('Restore failed: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadRestored = async () => {
+    try {
+      const url = `${API}/files/${result.fileId}/download`;
+
+      // ✅ Fetch as blob — binary correct rahil
+      const response = await fetch(url);
+      
+      if (!response.ok) throw new Error('Download failed');
+
+      const blob = await response.blob();
+      
+      // ✅ Correct filename sathe download
+      const filename = result.filename || 'restored_file';
+      const objectUrl = window.URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error('Download error:', err);
+      toast.error('Download failed: ' + err.message);
     }
   };
 
@@ -606,18 +642,39 @@ export default function Verify({ onNotify, walletAddress }) {
                 </div>
 
                 {/* Restore button */}
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }}
-                  onClick={handleRestore}
-                  style={{
-                    width: '100%', padding: '13px', borderRadius: 10,
-                    background: 'var(--accent-red)', color: '#fff', border: 'none',
-                    fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    boxShadow: '0 6px 20px rgba(255,68,68,.35)',
-                    textTransform: 'uppercase', letterSpacing: '1px',
-                  }}>
-                  <Download size={16} /> Restore Original File
-                </motion.button>
+                {!restoredPath ? (
+                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }}
+                    onClick={handleRestore}
+                    style={{
+                      width: '100%', padding: '13px', borderRadius: 10,
+                      background: 'var(--accent-red)', color: '#fff', border: 'none',
+                      fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      boxShadow: '0 6px 20px rgba(255,68,68,.35)',
+                      textTransform: 'uppercase', letterSpacing: '1px',
+                    }}>
+                    <RefreshCw size={16} className={loading ? 'spin' : ''} /> 
+                    {loading ? 'Restoring...' : 'Restore Original File'}
+                  </motion.button>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ background: 'rgba(0,200,150,.1)', border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)', padding: '10px', borderRadius: 8, fontSize: 12, textAlign: 'center', fontWeight: 600 }}>
+                      ✔ Original file restored successfully
+                    </div>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }}
+                      onClick={handleDownloadRestored}
+                      style={{
+                        width: '100%', padding: '13px', borderRadius: 10,
+                        background: 'var(--accent-teal)', color: '#fff', border: 'none',
+                        fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        boxShadow: '0 6px 20px rgba(0,200,150,.3)',
+                        textTransform: 'uppercase', letterSpacing: '1px',
+                      }}>
+                      <Download size={16} /> Download Restored File
+                    </motion.button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -685,6 +742,22 @@ export default function Verify({ onNotify, walletAddress }) {
                   </div>
                 )}
               </div>
+
+              {/* View Blockchain Proof Button */}
+              {result.txHash && (
+                <div style={{ marginTop: 16 }}>
+                   <a href={`https://sepolia.etherscan.io/tx/${result.txHash}`} target="_blank" rel="noreferrer"
+                      style={{
+                        width: '100%', padding: '12px', borderRadius: 10,
+                        background: 'rgba(124,92,252,.1)', color: 'var(--accent-purple)', border: '1px solid rgba(124,92,252,.3)',
+                        fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '1px'
+                      }}>
+                      <LinkIcon size={16} /> View Blockchain Proof
+                   </a>
+                </div>
+              )}
             </div>
 
             {/* ── ACTIONS ── */}

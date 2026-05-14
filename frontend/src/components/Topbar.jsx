@@ -55,14 +55,20 @@ export default function Topbar({ pageTitle, walletAddress, onDisconnect }) {
     if (!walletAddress) return;
     setLoading(true);
     try {
-      const res  = await fetch(`${API}/notifications?wallet=${walletAddress}`);
+      const res  = await fetch(`${API}/notifications?wallet=${walletAddress}`, {
+        signal: AbortSignal.timeout(5000)
+      });
+      if (!res.ok) return;
+      
       const data = await res.json();
       if (data.success) {
         setNotifs(data.notifications || []);
         setUnread(data.unread || 0);
       }
     } catch (err) {
-      console.error('Notifications fetch error:', err);
+      if (err.name !== 'AbortError' && err.name !== 'TypeError') {
+        console.error('Notifications fetch error:', err);
+      }
     } finally {
       setLoading(false);
     }
