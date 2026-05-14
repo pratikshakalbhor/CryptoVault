@@ -1,798 +1,728 @@
-import { useState, useRef, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import toast from 'react-hot-toast';
+import { pageVariants, cardVariants } from '../utils/animations';
+import { getTxUrl, verifyFileOnChain } from '../utils/blockchain';
 import '../styles/Verify.css';
-import { pageVariants, cardVariants, scalePop } from '../utils/animations';
-import { getTxUrl } from '../utils/blockchain';
-import { generateCertificate } from '../utils/generateCertificate';
-import {
-  ShieldCheck, AlertTriangle, CheckCircle, Clipboard,
-  ExternalLink, FileText, FileImage, FileCode, FileArchive,
-  RefreshCw, Loader2, Database, Link as LinkIcon,
-  ChevronRight, FileCheck, Search, UploadCloud, Download,
-  Shield, ArrowRight, FolderOpen, GitCompare,
-  Info, Clock, Hash, Activity
-} from 'lucide-react';
 
-const API = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api`;
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-const delay = ms => new Promise(r => setTimeout(r, ms));
+const AUDIT_STEPS = [
+  'Reading file bytes...',
+  'Generating SHA-256 fingerprint...',
+  'Fetching vault record...',
+  'Comparing hashes...',
+  'Verifying blockchain seal...',
+];
 
-const fmtSize = b =>
-  !b ? '—' : b < 1024 ? b + ' B' : b < 1048576
-    ? (b / 1024).toFixed(1) + ' KB'
-    : (b / 1048576).toFixed(2) + ' MB';
+export default function Verify({ walletAddress, onNotify }) {
+  // Step 1 — Vault file selection
+  const [vaultFiles,    setVaultFiles]    = useState([]);
+  const [vaultLoading,  setVaultLoading]  = useState(false);
+  const [showVaultPick, setShowVaultPick] = useState(false);
+  const [vaultFile,     setVaultFile]     = useState(null); // selected vault record
 
-const getFileIcon = file => {
-  if (!file) return <FileText size={22} />;
-  const t = file.type || '';
-  if (t.includes('image'))  return <FileImage  size={22} />;
-  if (t.includes('zip') || t.includes('rar')) return <FileArchive size={22} />;
-  if (t.includes('javascript') || t.includes('json') || t.includes('html')) return <FileCode size={22} />;
-  return <FileText size={22} />;
-};
+  // Step 2 — Desktop suspicious file
+  const [suspiciousFile, setSuspiciousFile] = useState(null);
+  const [drag,           setDrag]           = useState(false);
+  const fileRef = useRef();
 
-// ══════════════════════════════════════════════════
-// DIFF VIEWER COMPONENT
-// ══════════════════════════════════════════════════
-function DiffViewer({ diff, filename }) {
-  const [expanded,  setExpanded]  = useState(true);
-  const [viewMode,  setViewMode]  = useState('changes');
-
-  if (!diff) return null;
-
-  if (!diff.available) {
-    return (
-      <div style={{
-        padding: '14px 18px', marginBottom: 16,
-        background: 'rgba(124,92,252,.06)',
-        border: '1px solid rgba(124,92,252,.2)',
-        borderRadius: 10,
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <GitCompare size={16} color="#7c5cfc" />
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#7c5cfc' }}>
-            Diff Preview Unavailable
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-            {diff.message || 'Binary/unsupported file — detailed diff not available'}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const { summary, changes } = diff;
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-      style={{
-        border: '1px solid rgba(255,68,68,.3)',
-        borderLeft: '4px solid var(--accent-red)',
-        borderRadius: 12, overflow: 'hidden', marginBottom: 16,
-      }}>
-
-      {/* Header */}
-      <div onClick={() => setExpanded(e => !e)} style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 18px', cursor: 'pointer',
-        background: 'rgba(255,68,68,.06)',
-        borderBottom: expanded ? '1px solid rgba(255,68,68,.15)' : 'none',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <GitCompare size={16} color="var(--accent-red)" />
-          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-red)' }}>
-            🔬 Forensic Diff Analysis — {filename}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {summary?.modifiedLines > 0 && (
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: 'rgba(245,158,11,.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,.25)' }}>
-              {summary.modifiedLines} Modified
-            </span>
-          )}
-          {summary?.addedLines > 0 && (
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: 'rgba(0,200,150,.12)', color: '#00c896', border: '1px solid rgba(0,200,150,.25)' }}>
-              +{summary.addedLines} Added
-            </span>
-          )}
-          {summary?.removedLines > 0 && (
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: 'rgba(255,68,68,.12)', color: '#ff4444', border: '1px solid rgba(255,68,68,.25)' }}>
-              -{summary.removedLines} Removed
-            </span>
-          )}
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{expanded ? '▲' : '▼'}</span>
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} transition={{ duration: .2 }}>
-
-            {/* Summary */}
-            <div style={{
-              padding: '12px 18px', background: 'rgba(255,68,68,.03)',
-              borderBottom: '1px solid rgba(255,68,68,.1)',
-              display: 'flex', gap: 24, flexWrap: 'wrap',
-            }}>
-              {[
-                { label: 'Total Changes',  value: summary?.totalChanges  || 0, color: 'var(--accent-red)' },
-                { label: 'Lines Added',    value: summary?.addedLines    || 0, color: '#00c896' },
-                { label: 'Lines Removed',  value: summary?.removedLines  || 0, color: '#ff4444' },
-                { label: 'Lines Modified', value: summary?.modifiedLines || 0, color: '#F59E0B' },
-                { label: 'Original Lines', value: summary?.originalLines || 0, color: 'var(--text-secondary)' },
-                { label: 'Current Lines',  value: summary?.currentLines  || 0, color: 'var(--text-secondary)' },
-              ].map(({ label, value, color }) => (
-                <div key={label}>
-                  <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--text-muted)', marginBottom: 2 }}>{label}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color }}>{value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Tabs */}
-            <div style={{
-              display: 'flex', gap: 4, padding: '10px 18px',
-              borderBottom: '1px solid rgba(255,68,68,.1)',
-              background: 'var(--bg-input)',
-            }}>
-              {[
-                { key: 'changes', label: `Changed Lines (${changes?.length || 0})` },
-                { key: 'side',    label: 'Side-by-Side View' },
-              ].map(tab => (
-                <button key={tab.key} onClick={() => setViewMode(tab.key)} style={{
-                  padding: '5px 14px', borderRadius: 7, border: 'none', cursor: 'pointer',
-                  background: viewMode === tab.key ? 'var(--bg-card)' : 'transparent',
-                  color: viewMode === tab.key ? 'var(--text-primary)' : 'var(--text-muted)',
-                  fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-main)',
-                  transition: 'all .15s',
-                }}>{tab.label}</button>
-              ))}
-            </div>
-
-            {/* Content */}
-            <div style={{ padding: '14px 18px', maxHeight: 420, overflowY: 'auto' }}>
-
-              {viewMode === 'changes' && (
-                !changes?.length ? (
-                  <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 12 }}>
-                    No line changes detected
-                  </div>
-                ) : changes.map((change, i) => {
-                  if (change.type === 'truncated') {
-                    return (
-                      <div key={i} style={{ padding: '8px 14px', textAlign: 'center', background: 'rgba(124,92,252,.06)', border: '1px solid rgba(124,92,252,.2)', borderRadius: 6, fontSize: 11, color: '#7c5cfc', margin: '4px 0' }}>
-                        {change.message}
-                      </div>
-                    );
-                  }
-
-                  const cfg = {
-                    added:    { bg: 'rgba(0,200,150,.08)', border: 'rgba(0,200,150,.2)', color: '#00c896', label: 'ADDED',    prefix: '+' },
-                    removed:  { bg: 'rgba(255,68,68,.08)',  border: 'rgba(255,68,68,.2)',  color: '#ff4444', label: 'REMOVED',  prefix: '-' },
-                    modified: { bg: 'rgba(245,158,11,.06)', border: 'rgba(245,158,11,.2)', color: '#F59E0B', label: 'MODIFIED', prefix: '~' },
-                  }[change.type] || { bg: 'rgba(0,0,0,.05)', border: 'var(--border)', color: 'var(--text-muted)', label: '?', prefix: '?' };
-
-                  return (
-                    <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.02 }}
-                      style={{ margin: '4px 0', border: `1px solid ${cfg.border}`, borderRadius: 8, overflow: 'hidden', background: cfg.bg }}>
-
-                      {/* Line header */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', borderBottom: `1px solid ${cfg.border}` }}>
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, textTransform: 'uppercase' }}>
-                          {cfg.label}
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                          Line {change.line}
-                        </span>
-                      </div>
-
-                      {/* Before */}
-                      {change.before && (
-                        <div style={{ display: 'flex', gap: 8, padding: '6px 12px', background: 'rgba(255,68,68,.05)', borderBottom: change.after ? '1px solid rgba(255,68,68,.1)' : 'none' }}>
-                          <span style={{ color: '#ff4444', fontWeight: 700, fontSize: 13, fontFamily: 'var(--font-mono)', flexShrink: 0 }}>−</span>
-                          <code style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#ff8888', wordBreak: 'break-all' }}>
-                            {change.before}
-                          </code>
-                        </div>
-                      )}
-
-                      {/* After */}
-                      {change.after && (
-                        <div style={{ display: 'flex', gap: 8, padding: '6px 12px', background: 'rgba(0,200,150,.05)' }}>
-                          <span style={{ color: '#00c896', fontWeight: 700, fontSize: 13, fontFamily: 'var(--font-mono)', flexShrink: 0 }}>+</span>
-                          <code style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#88ffcc', wordBreak: 'break-all' }}>
-                            {change.after}
-                          </code>
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })
-              )}
-
-              {viewMode === 'side' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
-                      📄 Original File
-                    </div>
-                    <pre style={{
-                      background: 'var(--bg-input)', border: '1px solid var(--border)',
-                      borderRadius: 8, padding: 12, margin: 0,
-                      fontSize: 11, fontFamily: 'var(--font-mono)',
-                      color: 'var(--text-secondary)', lineHeight: 1.6,
-                      overflowX: 'auto', maxHeight: 300, overflowY: 'auto',
-                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                    }}>
-                      {diff.originalText || 'Content not available'}
-                    </pre>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>
-                      ⚠️ Modified File
-                    </div>
-                    <pre style={{
-                      background: 'rgba(255,68,68,.04)', border: '1px solid rgba(255,68,68,.2)',
-                      borderRadius: 8, padding: 12, margin: 0,
-                      fontSize: 11, fontFamily: 'var(--font-mono)',
-                      color: '#ff8888', lineHeight: 1.6,
-                      overflowX: 'auto', maxHeight: 300, overflowY: 'auto',
-                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                    }}>
-                      {diff.currentText || 'Content not available'}
-                    </pre>
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
-// ══════════════════════════════════════════════════
-// MAIN VERIFY COMPONENT
-// ══════════════════════════════════════════════════
-export default function Verify({ onNotify, walletAddress }) {
-  const location  = useLocation();
-  const navigate  = useNavigate();
-  const fileRef   = useRef(null);
-
-  const [fileId,     setFileId]     = useState('');
-  const [filename,   setFilename]   = useState('');
-  const [file,       setFile]       = useState(null);
-  const [drag,       setDrag]       = useState(false);
-  const [loading,    setLoading]    = useState(false);
+  // Audit state
+  const [auditing,   setAuditing]   = useState(false);
+  const [auditStep,  setAuditStep]  = useState(0);
   const [result,     setResult]     = useState(null);
-  const [activeStep, setActiveStep] = useState(0);
-  const [copied,     setCopied]     = useState('');
-  const [restoredPath, setRestoredPath] = useState(null); // ✅ Tracking restore state
+  const [error,      setError]      = useState('');
 
-  // Parse URL params
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Load vault files
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const id   = params.get('id')   || '';
-    const name = params.get('name') || '';
-    setFileId(id);
-    setFilename(decodeURIComponent(name));
-  }, [location]);
+    if (!walletAddress) return;
+    setVaultLoading(true);
+    fetch(`${API}/files?wallet=${walletAddress}`)
+      .then(r => r.json())
+      .then(d => setVaultFiles(d.files || []))
+      .catch(console.error)
+      .finally(() => setVaultLoading(false));
+  }, [walletAddress]);
 
-  const STEPS = [
-    { n: 1, label: 'Computing SHA-256 Hash...' },
-    { n: 2, label: 'Fetching Ledger Record...' },
-    { n: 3, label: 'Auditing Blockchain Seal...' },
-  ];
-
-  const handleDrop = e => {
-    e.preventDefault(); setDrag(false);
-    const f = e.dataTransfer.files[0];
-    if (f) { setFile(f); setResult(null); }
-  };
-
-  const doVerify = async () => {
-    if (!file || loading) return;
-    setLoading(true); setResult(null); setActiveStep(1);
+  const runForensicAudit = async () => {
+    if (!vaultFile || !suspiciousFile) return;
+    setAuditing(true); setError(''); setResult(null);
 
     try {
-      await delay(600);
-      setActiveStep(2);
+      for (let i = 0; i < AUDIT_STEPS.length; i++) {
+        setAuditStep(i + 1);
+        await delay(700);
+      }
 
       const formData = new FormData();
-      formData.append('file', file);
-      if (fileId && fileId !== 'null' && fileId !== 'undefined') {
-        formData.append('fileId', fileId);
+      formData.append('file', suspiciousFile);
+      formData.append('fileId', vaultFile.fileId);
+
+      const res  = await fetch(`${API}/verify`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Verification failed');
+
+      // Blockchain double-check
+      if (data.originalHash) {
+        const chain = await verifyFileOnChain(data.originalHash);
+        data.chainVerified = chain.valid;
+        data.chainOwner    = chain.owner;
       }
 
-      const res = await fetch(`${API}/verify`, { method: 'POST', body: formData });
-      if (!res.ok) throw new Error('Verification service unavailable');
-
-      const data = await res.json();
-      setActiveStep(3);
-      await delay(600);
       setResult(data);
 
-      const st = (data.status || '').toUpperCase();
-      if (st === 'VALID') {
-        toast.success('✅ File integrity verified!');
-      } else if (st === 'TAMPERED') {
-        toast.error('🚨 TAMPERING DETECTED!', {
-          duration: 5000,
-          style: { background: '#7f1d1d', color: '#fca5a5', border: '1px solid #ef4444' }
-        });
-      } else if (st === 'NOT_REGISTERED') {
-        toast('🚫 File not found in registry', { icon: '🔍' });
+      const isValid = data.status === 'valid' || data.isMatch;
+      if (typeof onNotify === 'function') {
+        onNotify(
+          isValid ? '✅ Integrity verified — file authentic' : '🚨 TAMPER DETECTED!',
+          isValid ? 'success' : 'error'
+        );
       }
-
     } catch (err) {
-      toast.error(err.message || 'Verification failed');
+      setError(err.message);
     } finally {
-      setLoading(false); setActiveStep(0);
+      setAuditing(false); setAuditStep(0);
     }
   };
 
   const handleRestore = async () => {
     if (!result?.fileId) return;
-    setLoading(true);
     try {
-      const res  = await fetch(`${API}/files/${result.fileId}/restore`, {
-        method: 'POST'
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        if (data.restoreUrl) {
-          // Cloud URL — open in new tab
-          window.open(data.restoreUrl, '_blank');
-        } else if (data.downloadPath) {
-          // Local restore — download
-          const dlRes  = await fetch(`${API}/files/${result.fileId}/download`);
-          const blob   = await dlRes.blob();
-          const url    = URL.createObjectURL(blob);
-          const a      = document.createElement('a');
-          a.href       = url;
-          a.download   = data.filename || result.filename;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-        setRestoredPath(data.downloadPath || data.restoreUrl || 'restored');
-        toast.success('✅ File restored successfully!');
-      } else {
-        throw new Error(data.message || 'Restore failed');
-      }
-    } catch (err) {
-      console.error('Restore error:', err);
-      toast.error('Restore failed: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDownloadRestored = async () => {
-    try {
-      const url = `${API}/files/${result.fileId}/download`;
-
-      // ✅ Fetch as blob — binary correct rahil
-      const response = await fetch(url);
-      
-      if (!response.ok) throw new Error('Download failed');
-
-      const blob = await response.blob();
-      
-      // ✅ Correct filename sathe download
-      const filename = result.filename || 'restored_file';
-      const objectUrl = window.URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = objectUrl;
-      a.download = filename;
-      document.body.appendChild(a);
+      const res = await fetch(`${API}/files/${result.fileId}/download`);
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = result.filename || vaultFile?.filename || 'restored_file';
       a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(objectUrl);
+      URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Download error:', err);
-      toast.error('Download failed: ' + err.message);
+      alert('Restore failed: ' + err.message);
     }
   };
 
-  const copyText = (text, key) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopied(key);
-    setTimeout(() => setCopied(''), 2000);
+  const reset = () => {
+    setVaultFile(null); setSuspiciousFile(null);
+    setResult(null); setError('');
   };
 
-  const shortHash = h => h ? `${h.slice(0, 14)}...${h.slice(-10)}` : '—';
-
-  const getStatusConfig = () => {
-    const st = (result?.status || '').toUpperCase();
-    switch (st) {
-      case 'VALID': return {
-        cls: 'valid', badge: '✓ Verified Authentic',
-        title: 'File is Authentic', desc: 'All cryptographic hashes match. No tampering detected.',
-        color: 'var(--accent-teal)', icon: <CheckCircle size={48} />,
-        bg: 'rgba(0,200,150,.1)', shadow: '0 0 30px rgba(0,200,150,.2)',
-      };
-      case 'TAMPERED': return {
-        cls: 'tampered', badge: '⚠ TAMPERING DETECTED',
-        title: 'File Has Been Modified', desc: 'This file does not match the original blockchain record. Forensic details below.',
-        color: 'var(--accent-red)', icon: <AlertTriangle size={48} />,
-        bg: 'rgba(255,68,68,.1)', shadow: '0 0 30px rgba(255,68,68,.2)',
-      };
-      case 'DATABASE_COMPROMISED': return {
-        cls: 'tampered', badge: '🚨 DATABASE BREACH',
-        title: 'CRITICAL: System Compromised', desc: 'Database record does not match blockchain proof. Immediate action required.',
-        color: '#ff1a1a', icon: <Shield size={48} />,
-        bg: 'rgba(255,26,26,.15)', shadow: '0 0 40px rgba(255,26,26,.4)',
-      };
-      case 'NOT_REGISTERED': return {
-        cls: 'grey', badge: 'Not Found',
-        title: 'File Not Registered', desc: 'No record found for this file. Upload it first to register on blockchain.',
-        color: '#9CA3AF', icon: <Search size={48} />,
-        bg: 'rgba(156,163,175,.1)', shadow: '0 0 30px rgba(156,163,175,.2)',
-      };
-      default: return {
-        cls: 'grey', badge: 'Unknown',
-        title: 'Verification Error', desc: 'Could not determine status.',
-        color: '#9CA3AF', icon: <AlertTriangle size={48} />,
-        bg: 'rgba(156,163,175,.1)', shadow: '0 0 30px rgba(156,163,175,.2)',
-      };
-    }
-  };
-
-  const sc      = result ? getStatusConfig() : null;
-  const isValid = result?.status?.toUpperCase() === 'VALID' || result?.isMatch === true;
-  const hasParam = !!fileId;
+  const isValid = result?.status === 'valid' || result?.isMatch === true;
 
   return (
-    <motion.div className="verify-container" variants={pageVariants} initial="initial" animate="animate">
+    <motion.div className="page-container"
+      variants={pageVariants} initial="initial" animate="animate">
 
       {/* Header */}
-      <div className="ph">
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800 }}>🔬 Forensic File Audit</h1>
-          <p style={{ marginTop: 6, color: 'var(--text-secondary)', fontSize: 13 }}>
-            Multi-layer verification — Database + Blockchain + Diff Analysis
-          </p>
-        </div>
-        {(file || result) && (
-          <button className="ref-btn" onClick={() => { setFile(null); setResult(null); }}>
-            <RefreshCw size={14} /> Reset
-          </button>
-        )}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: 0 }}>
+          Forensic Audit
+        </h1>
+        <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
+          Compare your vault original against a suspicious desktop file
+        </p>
       </div>
 
-      {/* Selected file info banner */}
-      {hasParam && !result && (
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-          style={{
-            padding: '14px 18px', borderRadius: 12, marginBottom: 16,
-            background: 'rgba(0,200,150,.06)', border: '1px solid rgba(0,200,150,.2)',
-            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      {/* ── Step indicator ── */}
+      {!result && (
+        <div className="section-card" style={{ padding: '14px 20px', marginBottom: 20 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            gap: 8, flexWrap: 'wrap',
           }}>
-          <FileCheck size={16} color="var(--accent-teal)" />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-teal)' }}>
-              ✅ File Selected for Audit
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-              {filename && <span style={{ marginRight: 12 }}>📄 {filename}</span>}
-              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)', fontSize: 10 }}>
-                ID: {fileId}
-              </span>
-            </div>
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-            ⚠️ Upload the <strong style={{ color: 'var(--text-primary)' }}>same file</strong> to verify
-          </div>
-        </motion.div>
-      )}
-
-      {/* No param — guide */}
-      {!hasParam && !result && !file && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          style={{
-            padding: '20px 22px', borderRadius: 12, marginBottom: 16,
-            background: 'rgba(0,212,255,.05)', border: '1px solid rgba(0,212,255,.15)',
-          }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
-            <Info size={14} /> How to Verify a File
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[
-              { n: '01', text: 'Go to "My Files" page', icon: <FolderOpen size={12} /> },
-              { n: '02', text: 'Click "Verify" button on any file', icon: <ShieldCheck size={12} /> },
-              { n: '03', text: 'Upload the same file here', icon: <UploadCloud size={12} /> },
+              { n: 1, label: 'Select Vault File',         done: !!vaultFile },
+              { n: 2, label: 'Upload Suspicious File',    done: !!suspiciousFile },
+              { n: 3, label: 'Run Forensic Audit',        done: false },
             ].map((s, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,212,255,.1)', border: '1px solid rgba(0,212,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', flexShrink: 0 }}>
-                  {s.n}
+              <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: '50%',
+                    background: s.done ? 'rgba(0,255,157,0.1)' : 'rgba(0,212,255,0.08)',
+                    border: `1px solid ${s.done ? 'var(--green)' : 'rgba(0,212,255,0.3)'}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 700,
+                    color: s.done ? 'var(--green)' : 'var(--accent)',
+                  }}>
+                    {s.done ? '✓' : s.n}
+                  </div>
+                  <span style={{ fontSize: 12, color: s.done ? 'var(--green)' : 'var(--muted)' }}>
+                    {s.label}
+                  </span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {s.icon} {s.text}
-                </div>
+                {i < 2 && (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="var(--border)" strokeWidth="2" strokeLinecap="round">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                )}
               </div>
             ))}
           </div>
-          <button
-            onClick={() => navigate('/files')}
-            style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, background: 'rgba(0,212,255,.1)', border: '1px solid rgba(0,212,255,.2)', color: 'var(--accent-cyan)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-main)' }}>
-            <FolderOpen size={13} /> Go to My Files <ArrowRight size={12} />
-          </button>
-        </motion.div>
+        </div>
       )}
 
       <AnimatePresence mode="wait">
-        {!result && (
-          <motion.div key="form" variants={cardVariants} initial="initial" animate="animate" exit={{ opacity: 0, y: -10 }}>
 
-            {/* Stepper */}
-            {(hasParam || file) && (
-              <div className="v-card" style={{ padding: '0 12px', marginBottom: 16 }}>
-                <div className="v-stepper">
-                  {STEPS.map((step, i) => (
-                    <div key={step.n} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div className={`v-step-item ${activeStep >= step.n ? 'active' : ''}`}>
-                        <div className="v-step-num">{step.n}</div>
-                        <span className="v-step-label">{step.label}</span>
+        {/* ── Form (not auditing, no result) ── */}
+        {!auditing && !result && (
+          <motion.div key="form" variants={cardVariants}
+            initial="initial" animate="animate">
+
+            {error && (
+              <div style={{
+                padding: '12px 16px', borderRadius: 10, marginBottom: 16,
+                background: 'rgba(255,59,92,0.08)',
+                border: '1px solid rgba(255,59,92,0.25)',
+                fontSize: 12, color: 'var(--red)',
+              }}>
+                {error}
+              </div>
+            )}
+
+            {/* ── STEP 1 — Select Vault File ── */}
+            <div className="section-card" style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                Step 1 — Select Secure Vault File
+              </div>
+
+              {!vaultFile ? (
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowVaultPick(true)}
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: 10,
+                    border: '1.5px dashed rgba(0,212,255,0.3)',
+                    background: 'rgba(0,212,255,0.03)',
+                    color: 'var(--accent)', fontSize: 13, fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: 8,
+                  }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  Select Secure Vault File
+                </motion.button>
+              ) : (
+                <div style={{
+                  padding: '12px 16px', borderRadius: 10,
+                  background: 'rgba(0,255,157,0.06)',
+                  border: '1px solid rgba(0,255,157,0.2)',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 8,
+                    background: 'rgba(0,255,157,0.1)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700, color: 'var(--green)',
+                  }}>
+                    {vaultFile.filename?.split('.').pop()?.toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {vaultFile.filename}
+                    </div>
+                    <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)',
+                      color: 'var(--green)', marginTop: 2 }}>
+                      ✓ Vault File Selected · {vaultFile.fileId}
+                    </div>
+                  </div>
+                  <button onClick={() => setVaultFile(null)}
+                    style={{ background: 'none', border: 'none',
+                      cursor: 'pointer', color: 'var(--muted)', fontSize: 16 }}>
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ── STEP 2 — Upload Suspicious File ── */}
+            <div className="section-card" style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                Step 2 — Upload Suspicious File for Audit
+              </div>
+
+              {!suspiciousFile ? (
+                <div
+                  onDragOver={e => { e.preventDefault(); setDrag(true); }}
+                  onDragLeave={() => setDrag(false)}
+                  onDrop={e => {
+                    e.preventDefault(); setDrag(false);
+                    if (e.dataTransfer.files[0])
+                      setSuspiciousFile(e.dataTransfer.files[0]);
+                  }}
+                  onClick={() => fileRef.current?.click()}
+                  style={{
+                    border: `1.5px dashed ${drag ? '#EF9F27' : 'rgba(239,159,39,0.3)'}`,
+                    borderRadius: 12, padding: '28px 20px', textAlign: 'center',
+                    cursor: 'pointer', transition: 'all 0.15s',
+                    background: drag ? 'rgba(239,159,39,0.04)' : 'transparent',
+                  }}>
+                  <input ref={fileRef} type="file" style={{ display: 'none' }}
+                    onChange={e => e.target.files[0] && setSuspiciousFile(e.target.files[0])} />
+                  <motion.div
+                    animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    style={{ marginBottom: 10 }}>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+                      stroke="#EF9F27" strokeWidth="1.4" strokeLinecap="round"
+                      style={{ margin: '0 auto' }}>
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/>
+                      <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                  </motion.div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+                    Drop suspicious file here
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    Upload the possibly tampered desktop copy for comparison
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '12px 16px', borderRadius: 10,
+                  background: 'rgba(239,159,39,0.06)',
+                  border: '1px solid rgba(239,159,39,0.25)',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 8,
+                    background: 'rgba(239,159,39,0.12)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700, color: '#EF9F27',
+                  }}>
+                    {suspiciousFile.name.split('.').pop()?.toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {suspiciousFile.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#EF9F27', marginTop: 2 }}>
+                      ⚠ Suspicious file loaded · {(suspiciousFile.size / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                  <button onClick={() => setSuspiciousFile(null)}
+                    style={{ background: 'none', border: 'none',
+                      cursor: 'pointer', color: 'var(--muted)', fontSize: 16 }}>
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ── Run Audit Button ── */}
+            <motion.button
+              whileHover={vaultFile && suspiciousFile ? { scale: 1.02 } : {}}
+              whileTap={{ scale: 0.98 }}
+              onClick={runForensicAudit}
+              disabled={!vaultFile || !suspiciousFile}
+              style={{
+                width: '100%', height: 52, border: 'none', borderRadius: 12,
+                background: vaultFile && suspiciousFile
+                  ? 'linear-gradient(135deg, #7F77DD, #378ADD)'
+                  : 'rgba(255,255,255,0.05)',
+                color: vaultFile && suspiciousFile ? '#fff' : 'var(--muted)',
+                fontSize: 14, fontWeight: 700, cursor: vaultFile && suspiciousFile ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                letterSpacing: '0.04em',
+              }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              EXECUTE FORENSIC AUDIT
+            </motion.button>
+
+          </motion.div>
+        )}
+
+        {/* ── Auditing Progress ── */}
+        {auditing && (
+          <motion.div key="auditing" variants={cardVariants}
+            initial="initial" animate="animate">
+            <div className="section-card" style={{ padding: '32px 24px', textAlign: 'center' }}>
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                style={{ marginBottom: 20, display: 'flex', justifyContent: 'center' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+                  stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </motion.div>
+              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: 'var(--text)' }}>
+                Running Forensic Audit...
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 28 }}>
+                Please wait while we analyze the files
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360, margin: '0 auto' }}>
+                {AUDIT_STEPS.map((s, i) => {
+                  const done   = auditStep > i + 1;
+                  const active = auditStep === i + 1;
+                  return (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 14px', borderRadius: 8,
+                      background: active ? 'rgba(0,212,255,0.06)' : done ? 'rgba(0,255,157,0.04)' : 'rgba(255,255,255,0.02)',
+                      border: `1px solid ${active ? 'rgba(0,212,255,0.25)' : done ? 'rgba(0,255,157,0.2)' : 'var(--border)'}`,
+                      opacity: active || done ? 1 : 0.35, transition: 'all 0.3s',
+                    }}>
+                      <div style={{
+                        width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: done ? 'rgba(0,255,157,0.15)' : active ? 'rgba(0,212,255,0.15)' : 'transparent',
+                        border: `1px solid ${done ? 'var(--green)' : active ? 'var(--accent)' : 'var(--border)'}`,
+                        color: done ? 'var(--green)' : active ? 'var(--accent)' : 'var(--muted)',
+                        fontSize: 10,
+                      }}>
+                        {done ? '✓' : active ? (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                            style={{ animation: 'spin 1s linear infinite' }}>
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                          </svg>
+                        ) : (i + 1)}
                       </div>
-                      {i < 2 && <ChevronRight size={13} style={{ color: 'var(--text-muted)' }} />}
+                      <span style={{
+                        fontSize: 12, fontFamily: 'var(--font-mono)',
+                        color: active ? 'var(--text)' : 'var(--muted)',
+                        fontWeight: active ? 600 : 400,
+                      }}>
+                        {s}
+                      </span>
+                      {active && (
+                        <span style={{ marginLeft: 'auto', fontSize: 10,
+                          color: 'var(--accent)', fontWeight: 600 }}>
+                          PROCESSING
+                        </span>
+                      )}
+                      {done && (
+                        <span style={{ marginLeft: 'auto', fontSize: 10,
+                          color: 'var(--green)', fontWeight: 600 }}>
+                          DONE
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Result ── */}
+        {result && !auditing && (
+          <motion.div key="result" variants={cardVariants}
+            initial="initial" animate="animate">
+
+            {/* Verdict */}
+            <div className="section-card"
+              style={{
+                textAlign: 'center', padding: '28px',
+                marginBottom: 16,
+                background: isValid ? 'rgba(0,255,157,0.04)' : 'rgba(255,59,92,0.04)',
+                border: `1px solid ${isValid ? 'rgba(0,255,157,0.2)' : 'rgba(255,59,92,0.2)'}`,
+              }}>
+              <motion.div
+                initial={{ scale: 0 }} animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 300 }}
+                style={{ marginBottom: 16 }}>
+                {isValid ? (
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none"
+                    stroke="var(--green)" strokeWidth="1.4" strokeLinecap="round"
+                    style={{ filter: 'drop-shadow(0 0 12px rgba(0,255,157,0.4))' }}>
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <polyline points="9 12 11 14 15 10"/>
+                  </svg>
+                ) : (
+                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none"
+                    stroke="var(--red)" strokeWidth="1.4" strokeLinecap="round"
+                    style={{ filter: 'drop-shadow(0 0 12px rgba(255,59,92,0.4))' }}>
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                )}
+              </motion.div>
+
+              {isValid && (
+                <div style={{
+                  display: 'inline-block', marginBottom: 12,
+                  fontSize: 10, padding: '3px 14px', borderRadius: 20,
+                  background: 'rgba(0,255,157,0.1)',
+                  border: '1px solid rgba(0,255,157,0.3)',
+                  color: 'var(--green)', fontWeight: 700, letterSpacing: '.06em',
+                }}>
+                  BLOCKCHAIN VERIFIED
+                </div>
+              )}
+
+              <h2 style={{
+                fontSize: 22, fontWeight: 800, margin: '0 0 8px',
+                color: isValid ? 'var(--green)' : 'var(--red)',
+              }}>
+                {isValid ? '✅ INTEGRITY VERIFIED' : '🚨 TAMPERING DETECTED'}
+              </h2>
+              <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+                {isValid
+                  ? 'Desktop file matches the vault original — no modifications found.'
+                  : 'Desktop file does NOT match the vault record — file has been altered.'}
+              </p>
+            </div>
+
+            {/* Hash comparison */}
+            <div className="section-card" style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
+                Hash Comparison
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[
+                  { label: 'Vault Original Hash',  value: result.originalHash,  color: 'var(--green)' },
+                  { label: 'Desktop File Hash',    value: result.currentHash,   color: isValid ? 'var(--green)' : 'var(--red)' },
+                ].map((row, i) => (
+                  <div key={i} style={{
+                    padding: '12px', borderRadius: 8,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid var(--border)',
+                  }}>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase',
+                      letterSpacing: 1.2, marginBottom: 6 }}>
+                      {row.label}
+                    </div>
+                    <div style={{
+                      fontSize: 10, fontFamily: 'var(--font-mono)',
+                      color: row.color, wordBreak: 'break-all',
+                    }}>
+                      {row.value || '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Match badge */}
+              <div style={{
+                marginTop: 12, padding: '10px 16px', borderRadius: 8,
+                background: isValid ? 'rgba(0,255,157,0.06)' : 'rgba(255,59,92,0.06)',
+                border: `1px solid ${isValid ? 'rgba(0,255,157,0.2)' : 'rgba(255,59,92,0.2)'}`,
+                textAlign: 'center',
+                fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                color: isValid ? 'var(--green)' : 'var(--red)',
+              }}>
+                {isValid
+                  ? '✓ HASH MATCH — File is authentic'
+                  : '✗ HASH MISMATCH — File has been modified'}
+              </div>
+            </div>
+
+            {/* File info */}
+            {result.filename && (
+              <div className="section-card" style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+                  textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+                  Record Details
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[
+                    { label: 'File Name',    value: result.filename },
+                    { label: 'File ID',      value: result.fileId },
+                    { label: 'Wallet Owner', value: result.walletAddress
+                        ? `${result.walletAddress.slice(0,10)}...` : '—' },
+                    { label: 'Blockchain',   value: result.chainVerified ? '✓ Verified' : 'DB Only' },
+                  ].map((item, i) => (
+                    <div key={i} style={{
+                      padding: '10px 12px', borderRadius: 8,
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid var(--border)',
+                    }}>
+                      <div style={{ fontSize: 9, color: 'var(--muted)',
+                        textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 3 }}>
+                        {item.label}
+                      </div>
+                      <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)',
+                        color: 'var(--text)', wordBreak: 'break-all' }}>
+                        {item.value}
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {!loading ? (
-              <div className="v-card">
-                {/* Dropzone */}
-                <div
-                  className={`v-dropzone ${drag ? 'drag-active' : ''} ${file ? 'file-selected' : ''}`}
-                  onDragOver={e => { e.preventDefault(); setDrag(true); }}
-                  onDragLeave={() => setDrag(false)}
-                  onDrop={handleDrop}
-                  onClick={() => fileRef.current?.click()}>
-                  <input ref={fileRef} type="file" style={{ display: 'none' }}
-                    onChange={e => { const f = e.target.files[0]; if (f) { setFile(f); setResult(null); } }} />
-
-                  {file ? (
-                    <div className="v-file-preview">
-                      <div className="v-file-icon">{getFileIcon(file)}</div>
-                      <div className="v-file-info">
-                        <div className="v-file-name">{file.name}</div>
-                        <div className="v-file-meta">{fmtSize(file.size)} · Ready for forensic audit</div>
-                      </div>
-                      <button className="v-remove-btn" onClick={e => { e.stopPropagation(); setFile(null); }}>✕</button>
-                    </div>
-                  ) : (
-                    <div style={{ textAlign: 'center', padding: 20 }}>
-                      <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
-                      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
-                        Drop the file to audit
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        Same file jo originally upload kela hota
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <button className="v-btn-execute" disabled={!file} onClick={doVerify}>
-                  <ShieldCheck size={18} /> Execute Forensic Audit
-                </button>
-              </div>
-            ) : (
-              <div className="v-card v-processing-card">
-                <div style={{ fontSize: 36, marginBottom: 16 }}>🔬</div>
-                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Forensic Analysis Running...</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 28 }}>
-                  Comparing cryptographic signatures...
-                </div>
-                <div className="v-processing-steps">
-                  {STEPS.map(step => {
-                    const done   = activeStep > step.n;
-                    const active = activeStep === step.n;
-                    return (
-                      <div key={step.n} className={`v-proc-step ${active ? 'active' : ''} ${done ? 'done' : ''}`}>
-                        <div className="v-step-num">
-                          {done ? <CheckCircle size={13} /> : active ? <Loader2 size={13} style={{ animation: 'spin .8s linear infinite' }} /> : step.n}
-                        </div>
-                        <span style={{ flex: 1, textAlign: 'left', fontSize: 12 }}>{step.label}</span>
-                        {done   && <span style={{ fontSize: 10, color: 'var(--accent-teal)', fontWeight: 700 }}>DONE</span>}
-                        {active && <span style={{ fontSize: 10, color: 'var(--accent-cyan)', fontWeight: 700 }}>RUNNING</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+            {/* TX hash */}
+            {result.txHash && result.txHash !== 'pending' && (
+              <a href={getTxUrl(result.txHash)} target="_blank" rel="noreferrer"
+                style={{
+                  display: 'block', textAlign: 'center', marginBottom: 16,
+                  fontSize: 12, color: 'var(--accent)', textDecoration: 'none',
+                }}>
+                ⛓ View Blockchain Proof on Etherscan ↗
+              </a>
             )}
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                onClick={reset}
+                style={{
+                  flex: 1, height: 48, borderRadius: 10,
+                  border: '1px solid var(--border)',
+                  background: 'transparent', color: 'var(--text)',
+                  fontSize: 13, cursor: 'pointer',
+                }}>
+                Audit Another
+              </motion.button>
+
+              {!isValid && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  onClick={handleRestore}
+                  style={{
+                    flex: 1.5, height: 48, borderRadius: 10, border: 'none',
+                    background: 'linear-gradient(135deg, var(--red), #c0392b)',
+                    color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                  Restore Original File
+                </motion.button>
+              )}
+
+              {isValid && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  style={{
+                    flex: 1.5, height: 48, borderRadius: 10, border: 'none',
+                    background: 'linear-gradient(135deg, #7F77DD, #378ADD)',
+                    color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  }}>
+                  Download Certificate
+                </motion.button>
+              )}
+            </div>
+
           </motion.div>
         )}
 
-        {/* ── RESULT ── */}
-        {result && sc && (
-          <motion.div key="result" variants={scalePop} initial="initial" animate="animate">
+      </AnimatePresence>
 
-            {/* Verdict */}
-            <div className={`v-card v-result-verdict ${sc.cls}`} style={{ textAlign: 'center', marginBottom: 16 }}>
-              <div className={`v-status-badge ${sc.cls}`}>{sc.badge}</div>
-              <div style={{ width: 80, height: 80, borderRadius: '50%', background: sc.bg, color: sc.color, boxShadow: sc.shadow, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '16px auto' }}>
-                {sc.icon}
-              </div>
-              <h2 style={{ fontSize: 22, fontWeight: 800, color: sc.color, marginBottom: 8 }}>
-                {sc.title}
-              </h2>
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                {sc.desc}
-              </p>
-            </div>
-
-            {/* ── DIFF VIEWER (only for TAMPERED) ── */}
-            {result.status === 'TAMPERED' && result.diff && (
-              <DiffViewer diff={result.diff} filename={result.filename || file?.name} />
-            )}
-
-            {/* ── AUDIT INFO (TAMPERED) ── */}
-            {result.status === 'TAMPERED' && result.comparison && (
-              <div style={{
-                padding: '18px 20px', borderRadius: 12, marginBottom: 16,
-                background: 'rgba(255,68,68,.05)',
-                border: '1px solid rgba(255,68,68,.2)',
-                borderLeft: '4px solid var(--accent-red)',
+      {/* ── Vault File Picker Modal ── */}
+      <AnimatePresence>
+        {showVaultPick && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={e => e.target === e.currentTarget && setShowVaultPick(false)}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 1000, padding: '1rem',
+            }}>
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 16, width: '100%', maxWidth: 520,
+                maxHeight: '75vh', overflow: 'hidden',
+                display: 'flex', flexDirection: 'column',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: 'var(--accent-red)', fontWeight: 700, fontSize: 13 }}>
-                  <Activity size={15} /> Audit Findings
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 16 }}>
-                  {result.comparison.sizeMatch
-                    ? `⚠️ Same size (${fmtSize(result.comparison.originalFileSize)}) but different hash — content modified internally.`
-                    : `📏 Size changed: ${fmtSize(result.comparison.originalFileSize)} → ${fmtSize(result.comparison.currentFileSize)}`
-                  }
-                </div>
-
-                {/* Restore button */}
-                {!restoredPath ? (
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }}
-                    onClick={handleRestore}
-                    style={{
-                      width: '100%', padding: '13px', borderRadius: 10,
-                      background: 'var(--accent-red)', color: '#fff', border: 'none',
-                      fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      boxShadow: '0 6px 20px rgba(255,68,68,.35)',
-                      textTransform: 'uppercase', letterSpacing: '1px',
-                    }}>
-                    <RefreshCw size={16} className={loading ? 'spin' : ''} /> 
-                    {loading ? 'Restoring...' : 'Restore Original File'}
-                  </motion.button>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ background: 'rgba(0,200,150,.1)', border: '1px solid var(--accent-teal)', color: 'var(--accent-teal)', padding: '10px', borderRadius: 8, fontSize: 12, textAlign: 'center', fontWeight: 600 }}>
-                      ✔ Original file restored successfully
-                    </div>
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }}
-                      onClick={handleDownloadRestored}
-                      style={{
-                        width: '100%', padding: '13px', borderRadius: 10,
-                        background: 'var(--accent-teal)', color: '#fff', border: 'none',
-                        fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        boxShadow: '0 6px 20px rgba(0,200,150,.3)',
-                        textTransform: 'uppercase', letterSpacing: '1px',
-                      }}>
-                      <Download size={16} /> Download Restored File
-                    </motion.button>
+              {/* Header */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '16px 20px', borderBottom: '1px solid var(--border)',
+              }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                    Select Vault File
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* ── HASH GRID ── */}
-            <div className="v-hash-grid" style={{ marginBottom: 16 }}>
-              {[
-                { label: 'Original Hash (DB)', key: 'orig',  val: result.originalHash, icon: <Database size={13} /> },
-                { label: 'Digital Seal',       key: 'chain', val: result.blockchainHash || result.txHash, icon: <LinkIcon size={13} /> },
-              ].map(({ label, key, val, icon }) => (
-                <div key={key} className="v-hash-box">
-                  <div className="v-hash-label">{icon} {label}</div>
-                  <div className="v-hash-value-wrap">
-                    <div className="v-hash-value">{shortHash(val)}</div>
-                    <button className="v-copy-btn" onClick={() => copyText(val, key)}>
-                      {copied === key ? <CheckCircle size={13} color="var(--accent-teal)" /> : <Clipboard size={13} />}
-                    </button>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                    Choose the original sealed file to compare against
                   </div>
                 </div>
-              ))}
-              <div className="v-hash-box" style={{ gridColumn: 'span 2' }}>
-                <div className="v-hash-label"><Hash size={13} /> Current File Hash</div>
-                <div className="v-hash-value-wrap" style={{ borderColor: sc.color + '4D' }}>
-                  <div className="v-hash-value" style={{ color: sc.color }}>{result.currentHash}</div>
-                  <button className="v-copy-btn" onClick={() => copyText(result.currentHash, 'curr')}>
-                    {copied === 'curr' ? <CheckCircle size={13} color="var(--accent-teal)" /> : <Clipboard size={13} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* ── OFFICIAL RECORD ── */}
-            <div className="v-card" style={{ marginBottom: 16 }}>
-              <div className="pf-section-label" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 7 }}>
-                <Shield size={13} /> Official Blockchain Record
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {[
-                  { label: 'Database Check',    val: 'SUCCESS',   color: 'var(--accent-teal)' },
-                  { label: 'Blockchain Check',  val: result.chainVerified ? 'CONFIRMED' : 'PENDING', color: result.chainVerified ? 'var(--accent-teal)' : '#F59E0B' },
-                  { label: 'File',              val: result.filename || '—', color: 'var(--text-primary)' },
-                  { label: 'Wallet',            val: result.walletAddress ? result.walletAddress.slice(0,8)+'...'+result.walletAddress.slice(-4) : '—', color: 'var(--text-secondary)' },
-                ].map(({ label, val, color }) => (
-                  <div key={label} className="pf-info-row">
-                    <span className="pf-info-key">{label}</span>
-                    <span style={{ color, fontWeight: 600, fontSize: 12 }}>{val}</span>
-                  </div>
-                ))}
-
-                {result.txHash && result.txHash !== 'pending' && (
-                  <div className="pf-info-row" style={{ gridColumn: 'span 2' }}>
-                    <span className="pf-info-key">TX Hash</span>
-                    <a href={getTxUrl(result.txHash)} target="_blank" rel="noreferrer"
-                      style={{ color: 'var(--accent-purple)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
-                      {result.txHash.slice(0, 20)}... <ExternalLink size={10} />
-                    </a>
-                  </div>
-                )}
-
-                {result.uploadedAt && (
-                  <div className="pf-info-row" style={{ gridColumn: 'span 2' }}>
-                    <span className="pf-info-key">Uploaded At</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <Clock size={11} /> {new Date(result.uploadedAt).toLocaleString()}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* View Blockchain Proof Button */}
-              {result.txHash && (
-                <div style={{ marginTop: 16 }}>
-                   <a href={`https://sepolia.etherscan.io/tx/${result.txHash}`} target="_blank" rel="noreferrer"
-                      style={{
-                        width: '100%', padding: '12px', borderRadius: 10,
-                        background: 'rgba(124,92,252,.1)', color: 'var(--accent-purple)', border: '1px solid rgba(124,92,252,.3)',
-                        fontWeight: 700, fontSize: 12, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '1px'
-                      }}>
-                      <LinkIcon size={16} /> View Blockchain Proof
-                   </a>
-                </div>
-              )}
-            </div>
-
-            {/* ── ACTIONS ── */}
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-outline" style={{ flex: 1 }}
-                onClick={() => { setFile(null); setResult(null); }}>
-                <RefreshCw size={13} /> Verify Another
-              </button>
-              {isValid && (
-                <button className="v-btn-execute" style={{ flex: 1.5, marginTop: 0 }}
-                  onClick={() => generateCertificate({ ...result, walletAddress })}>
-                  <FileCheck size={16} /> Generate Certificate
+                <button onClick={() => setShowVaultPick(false)}
+                  style={{ background: 'none', border: '1px solid var(--border)',
+                    cursor: 'pointer', color: 'var(--muted)', fontSize: 16,
+                    width: 30, height: 30, borderRadius: 8,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  ✕
                 </button>
-              )}
-            </div>
+              </div>
 
+              {/* File list */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+                {vaultLoading ? (
+                  <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>
+                    Loading vault files...
+                  </div>
+                ) : vaultFiles.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>
+                    No files in vault. Upload files first.
+                  </div>
+                ) : (
+                  vaultFiles.map(f => (
+                    <motion.div key={f.fileId}
+                      whileHover={{ background: 'rgba(255,255,255,0.04)' }}
+                      onClick={() => { setVaultFile(f); setShowVaultPick(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '12px', borderRadius: 10, cursor: 'pointer',
+                        marginBottom: 4, border: '1px solid transparent',
+                        transition: 'all 0.15s',
+                      }}>
+                      <div style={{
+                        width: 38, height: 38, borderRadius: 8, flexShrink: 0,
+                        background: f.status === 'valid' ? 'rgba(0,255,157,0.08)' : 'rgba(255,59,92,0.08)',
+                        border: `1px solid ${f.status === 'valid' ? 'rgba(0,255,157,0.2)' : 'rgba(255,59,92,0.2)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 9, fontWeight: 700,
+                        color: f.status === 'valid' ? 'var(--green)' : 'var(--red)',
+                      }}>
+                        {f.filename?.split('.').pop()?.toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {f.filename}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--muted)',
+                          fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                          {f.fileId} · {new Date(f.uploadedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 600,
+                        background: f.status === 'valid' ? 'rgba(0,255,157,0.1)' : 'rgba(255,59,92,0.1)',
+                        color: f.status === 'valid' ? 'var(--green)' : 'var(--red)',
+                      }}>
+                        {f.status?.toUpperCase()}
+                      </span>
+                    </motion.div>
+                  ))
+                )}
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
     </motion.div>
   );
 }
