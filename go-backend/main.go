@@ -32,6 +32,7 @@ log.Fatal("❌ DB connection failed:", err)
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Wallet-Address")
+		c.Header("Access-Control-Expose-Headers", "Content-Disposition")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -43,6 +44,7 @@ log.Fatal("❌ DB connection failed:", err)
 		c.JSON(200, gin.H{"message": "BlockVerify Backend ✅"})
 	})
 
+	r.Static("/restored", "./restored")
 	routes.RegisterRoutes(r)
 
 	port := os.Getenv("PORT")

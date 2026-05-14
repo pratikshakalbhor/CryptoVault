@@ -25,13 +25,14 @@ func ConnectDB() (*mongo.Client, error) {
 	}
 	log.Printf("🔗 Connecting to MongoDB...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	clientOptions := options.Client().
 		ApplyURI(mongoURI).
-		SetConnectTimeout(30 * time.Second).
-		SetServerSelectionTimeout(30 * time.Second)
+		SetConnectTimeout(60 * time.Second).
+		SetSocketTimeout(60 * time.Second).
+		SetServerSelectionTimeout(60 * time.Second)
 
 	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
@@ -39,7 +40,7 @@ func ConnectDB() (*mongo.Client, error) {
 	}
 
 	// Connection test karo
-	pingCtx, pingCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer pingCancel()
 	
 	err = client.Ping(pingCtx, nil)
