@@ -18,10 +18,9 @@ import { useNavigate } from 'react-router-dom';
 import { getAllFiles } from '../utils/api';
 import {
   Activity, AlertTriangle, CheckCircle, ExternalLink,
-  FileText, RefreshCw, Search, ShieldCheck, X, Share2, Trash2
+  FileText, RefreshCw, Search, ShieldCheck, X, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import ShareModal from '../components/ShareModal';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 const fmtSize = b =>
@@ -65,14 +64,13 @@ export default function MyFiles({ walletAddress }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [shareFile, setShareFile] = useState(null); // file being shared in modal
   const [processing, setProcessing] = useState(null);
 
   const fetchFiles = useCallback(async () => {
     setLoading(true); setError('');
     try {
       const res = await getAllFiles(walletAddress);
-      setFiles(res.data || []);
+      setFiles(res.files || []);
     } catch (err) {
       setError(err.message || 'Failed to load files');
     } finally {
@@ -93,6 +91,21 @@ export default function MyFiles({ walletAddress }) {
       await fetchFiles(); // Requirement #1: Remove stale UI data
     } catch (err) {
       alert(err.message || "Failed to move to trash");
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleRestore = async (fileId) => {
+    if (!window.confirm("Restore this file from blockchain backup?")) return;
+    setProcessing(fileId);
+    try {
+      const { restoreFile } = await import('../utils/api');
+      await restoreFile(fileId);
+      toast.success("File restored successfully");
+      await fetchFiles();
+    } catch (err) {
+      toast.error(err.message || "Restoration failed");
     } finally {
       setProcessing(null);
     }
@@ -170,7 +183,7 @@ export default function MyFiles({ walletAddress }) {
               <Search size={24} style={{ color: 'var(--text-muted)', opacity: 0.5 }} />
             </div>
             <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
-              {q ? 'No records matching your search' : 'No files uploaded yet.'}
+              {q ? 'No records matching your search' : 'No uploaded files found'}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               {q
@@ -204,7 +217,10 @@ export default function MyFiles({ walletAddress }) {
                         <FileText size={15} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
                         <div>
                           <div className="fname">{name.length > 28 ? name.slice(0, 25) + '...' : name}</div>
-                          <div className="ftype" style={{ fontSize: 10 }}>{f.fileType || f.type || '—'} · {fmtSize(f.fileSize)}</div>
+                          <div className="ftype" style={{ fontSize: 10 }}>
+                            {f.fileType || f.type || '—'} · {fmtSize(f.fileSize)}
+                            {f.ipfsCID && <span style={{ marginLeft: 8, opacity: 0.7, color: 'var(--accent-purple)' }}>CID: {f.ipfsCID.slice(0, 8)}...</span>}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -243,7 +259,6 @@ export default function MyFiles({ walletAddress }) {
                           style={{ padding: '4px 10px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                           onClick={e => { 
                             e.stopPropagation(); 
-                            console.log("Navigating with fileId:", f.fileId);
                             navigate(`/verify?id=${f.fileId}`); 
                           }}
                           title="Verify this file"
@@ -251,15 +266,29 @@ export default function MyFiles({ walletAddress }) {
                           <ShieldCheck size={13} /> Verify
                         </button>
 
-                        {/* Share Button — opens QR modal */}
+                        {/* Restore Button */}
                         <button
-                          className="btn btn-g"
+                          className="btn btn-teal"
                           style={{ padding: '4px 10px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          onClick={e => { e.stopPropagation(); setShareFile(f); }}
-                          title="Share public verification link"
+                          onClick={e => { e.stopPropagation(); handleRestore(fileId); }}
+                          disabled={processing === fileId}
+                          title="Restore original from IPFS"
                         >
-                          <Share2 size={13} /> Share
+                          <RefreshCw size={13} className={processing === fileId ? "spin" : ""} /> Restore
                         </button>
+
+                        {/* Blockchain Proof Button */}
+                        {txHash && (
+                          <a
+                            href={`https://sepolia.etherscan.io/tx/${txHash}`}
+                            target="_blank" rel="noreferrer"
+                            className="btn btn-purple"
+                            style={{ padding: '4px 10px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <ExternalLink size={13} /> Proof
+                          </a>
+                        )}
 
                         {/* Trash Button */}
                         <button
@@ -285,11 +314,6 @@ export default function MyFiles({ walletAddress }) {
         <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8, textAlign: 'right' }}>
           Showing {filtered.length} of {files.length} file{files.length !== 1 ? 's' : ''}
         </p>
-      )}
-
-      {/* Share Modal */}
-      {shareFile && (
-        <ShareModal file={shareFile} onClose={() => setShareFile(null)} />
       )}
     </div>
   );

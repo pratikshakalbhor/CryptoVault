@@ -48,7 +48,7 @@ export default function BlockchainLog({ walletAddress }) {
     setLoading(true); setError('');
     try {
       const res = await getAllFiles(walletAddress, true);
-      setFiles(res.data || []);
+      setFiles(res.files || []);
     } catch (err) {
       setError(err.message || 'Failed to load transactions');
     } finally {

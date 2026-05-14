@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { BrowserProvider, getBytes } from 'ethers';
 import { uploadFile } from '../utils/api';
 import { sealFileOnBlockchain } from '../utils/blockchain';
 import { Activity, AlertTriangle, CheckCircle, Circle, Cloud, FileText, Folder, Link, Lock, RefreshCw, UploadCloud, X } from 'lucide-react';
@@ -9,7 +8,6 @@ import toast from 'react-hot-toast';
 
 const STEPS = [
   { id: 'hash',    label: 'Generating Secure Hash' },
-  { id: 'sign',    label: 'Digital Signing (MetaMask)' },
   { id: 'upload',  label: 'Encrypting & Storing' },
   { id: 'chain',   label: 'Sealing on Blockchain' },
 ];
@@ -59,23 +57,13 @@ export default function Upload({ walletAddress }) {
       console.log('Calculating hash...');
       const fileHash = await calculateFileHash(file);
       setStepsDone(prev => [...prev, 'hash']);
-      setProgress(30);
+      setProgress(40);
 
-      // ── STEP 2: SIGN ──
-      setActiveStep('sign');
-      console.log('Prompting for signature...');
-      const provider = new BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      
-      // Sign the bytes of the hash
-      const signature = await signer.signMessage(getBytes(fileHash));
-      setStepsDone(prev => [...prev, 'sign']);
-      setProgress(50);
-
-      // ── STEP 3: UPLOAD ──
+      // ── STEP 2: UPLOAD ──
       setActiveStep('upload');
       const formattedExpiry = expiryDate ? new Date(expiryDate).toISOString() : null;
-      const data = await uploadFile(file, walletAddress || '', formattedExpiry, null, null, signature);
+      // Pass fileHash to uploadFile, but skip signature
+      const data = await uploadFile(file, walletAddress || '', formattedExpiry, null, null, fileHash);
       console.log('✅ Backend response:', data);
 
       const file_ = data.file || data;
