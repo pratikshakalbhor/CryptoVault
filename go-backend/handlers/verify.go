@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -150,7 +151,7 @@ func VerifyFile(c *gin.Context) {
 			tamperDoc := bson.M{
 				"fileId":        record.FileID,
 				"filename":      record.Filename,
-				"walletAddress": record.WalletAddress,
+				"owner":         record.Owner,
 				"originalHash":  dbHash,
 				"tamperedHash":  newHash,
 				"originalSize":  storedSize,
@@ -166,9 +167,9 @@ func VerifyFile(c *gin.Context) {
 		// Notifications
 		switch status {
 		case "VALID":
-			NotifyVerifyValid(record.WalletAddress, record.Filename, fileId)
+			NotifyVerifyValid(record.Owner, record.Filename, fileId)
 		case "TAMPERED":
-			NotifyTamperDetected(record.WalletAddress, record.Filename, fileId)
+			NotifyTamperDetected(record.Owner, record.Filename, fileId)
 		}
 	}
 
@@ -183,9 +184,9 @@ func VerifyFile(c *gin.Context) {
 		"originalHash":  dbHash,
 		"message":       message,
 		"fileId":        fileId,
-		"filename":      record.Filename,
+		"fileName":      record.Filename,
 		"txHash":        record.TxHash,
-		"walletAddress": record.WalletAddress,
+		"walletAddress": record.Owner,
 		"uploadedAt":    record.UploadedAt,
 		"restoreUrl":    record.EncryptedURL,
 		"backupPath":    record.BackupPath,
@@ -337,103 +338,94 @@ func readLines(r io.Reader) []string {
 	return lines
 }
 
-// ── Restore File ─────────────────────────────────
+// ── Restore File (Forensic Recovery) ─────────────────────────────
 func RestoreFile(c *gin.Context) {
 	fileId := c.Param("id")
+	if fileId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "fileId required"})
+		return
+	}
 
 	col := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	var record models.FileRecord
 	if err := col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "File record not found"})
 		return
 	}
 
-	// Option 1: Local backup file
-	if record.BackupPath != "" {
-		if _, err := os.Stat(record.BackupPath); err == nil {
-			// Update status
-			col.UpdateOne(ctx,
-				bson.M{"fileId": fileId},
-				bson.M{"$set": bson.M{"status": "valid", "updatedAt": time.Now()}},
-			)
-			NotifyRestored(record.WalletAddress, record.Filename, fileId)
-
-			// Serve file
-			c.Header("Content-Disposition",
-				fmt.Sprintf(`attachment; filename="%s"`, record.Filename))
-			c.Header("Content-Type", record.MimeType)
-			c.File(record.BackupPath)
-			return
-		}
-	}
-
-	// Option 2: Cloud URL (Cloudinary/IPFS)
-	restoreUrl := record.EncryptedURL
-	if restoreUrl == "" && record.IpfsCID != "" {
-		restoreUrl = "https://gateway.pinata.cloud/ipfs/" + record.IpfsCID
-	}
-
-	if restoreUrl != "" {
-		col.UpdateOne(ctx,
-			bson.M{"fileId": fileId},
-			bson.M{"$set": bson.M{"status": "valid", "updatedAt": time.Now()}},
-		)
-		NotifyRestored(record.WalletAddress, record.Filename, fileId)
-		c.JSON(http.StatusOK, gin.H{
-			"success":    true,
-			"restoreUrl": restoreUrl,
-			"filename":   record.Filename,
-			"message":    "Redirect to original file",
-		})
+	// 1. Validate CID
+	if record.IpfsCID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Original backup not found (IPFS CID missing)"})
 		return
 	}
 
-	c.JSON(http.StatusNotFound, gin.H{
-		"error":    "Original backup not available",
-		"filename": record.Filename,
-		"hint":     "Enable backup during upload to use restore feature",
+	// 2. Download from Pinata/IPFS
+	ipfsURL := fmt.Sprintf("https://gateway.pinata.cloud/ipfs/%s", record.IpfsCID)
+	log.Printf("🔄 Restoring file %s from IPFS: %s", fileId, ipfsURL)
+
+	resp, err := http.Get(ipfsURL)
+	if err != nil || resp.StatusCode != 200 {
+		log.Printf("❌ IPFS download failed for %s: %v", fileId, err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "message": "Failed to download from IPFS gateway"})
+		return
+	}
+	defer resp.Body.Close()
+
+	// 3. Create local restore directory
+	restoreDir := "./restored"
+	if _, err := os.Stat(restoreDir); os.IsNotExist(err) {
+		os.MkdirAll(restoreDir, 0755)
+	}
+
+	// 4. Save file locally
+	// Ensure filename has extension if missing (though Filename usually has it)
+	destPath := filepath.Join(restoreDir, record.Filename)
+	out, err := os.Create(destPath)
+	if err != nil {
+		log.Printf("❌ Failed to create local file %s: %v", destPath, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create local restore file"})
+		return
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		log.Printf("❌ Failed to save binary stream to %s: %v", destPath, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "File write error"})
+		return
+	}
+
+	// 5. Update MongoDB document
+	now := time.Now()
+	col.UpdateOne(ctx,
+		bson.M{"fileId": fileId},
+		bson.M{"$set": bson.M{
+			"status":         "RESTORED",
+			"lastRestoredAt": now,
+			"updatedAt":      now,
+		}},
+	)
+
+	// 6. Insert audit log
+	auditCol := database.GetCollection("audits")
+	auditCol.InsertOne(ctx, bson.M{
+		"fileId":    fileId,
+		"event":     "RESTORE_SUCCESS",
+		"fileName":  record.Filename,
+		"timestamp": now,
 	})
-}
 
-// ── Download Original ────────────────────────────
-func DownloadOriginal(c *gin.Context) {
-	fileId := c.Param("id")
-
-	col := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var record models.FileRecord
-	if err := col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
-		return
-	}
-
-	// Local backup
-	if record.BackupPath != "" {
-		if _, err := os.Stat(record.BackupPath); err == nil {
-			c.Header("Content-Disposition",
-				fmt.Sprintf(`attachment; filename="%s"`, record.Filename))
-			c.Header("Content-Type", record.MimeType)
-			c.File(record.BackupPath)
-			return
-		}
-	}
-
-	// Cloud URL fallback
-	restoreUrl := record.EncryptedURL
-	if restoreUrl == "" && record.IpfsCID != "" {
-		restoreUrl = "https://gateway.pinata.cloud/ipfs/" + record.IpfsCID
-	}
-	if restoreUrl != "" {
-		c.Redirect(http.StatusTemporaryRedirect, restoreUrl)
-		return
-	}
-
-	c.JSON(http.StatusNotFound, gin.H{"error": "Original file not available"})
+	// 7. Success Response
+	log.Printf("✅ File %s restored successfully to %s", fileId, destPath)
+	c.JSON(http.StatusOK, gin.H{
+		"success":      true,
+		"message":      "Original file restored successfully",
+		"fileName":     record.Filename,
+		"downloadPath": fmt.Sprintf("/restored/%s", record.Filename),
+	})
 }
 
 // ── Get Tamper Logs ──────────────────────────────

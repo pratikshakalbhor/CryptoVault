@@ -2,8 +2,12 @@ package handlers
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,63 +23,68 @@ func GetAllFiles(c *gin.Context) {
 	wallet := strings.ToLower(c.Query("wallet"))
 	isBlockchain := c.Query("blockchain") == "true"
 
-	if wallet == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "wallet required"})
-		return
-	}
+	log.Printf("wallet param: %s", wallet)
 
 	col := database.GetCollection("files")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// 🔍 DEBUG LOGS
-	log.Printf("Query wallet: %s", wallet)
-	countAll, _ := col.CountDocuments(ctx, bson.M{})
-	log.Printf("Total docs in DB: %d", countAll)
-	
-	cursorAll, _ := col.Find(ctx, bson.M{})
-	log.Println("--- DEBUG: ALL DB DOCUMENTS ---")
-	for cursorAll.Next(ctx) {
-		var doc bson.M
-		cursorAll.Decode(&doc)
-		log.Println("DB DOC:", doc)
-	}
-	log.Println("-------------------------------")
-
-	// ✅ Case-insensitive wallet search
+	// Filter for owner and non-trashed files
 	filter := bson.M{
-		"walletAddress": bson.M{
-			"$regex":   "^" + wallet + "$",
-			"$options": "i",
-		},
-		"$or": []bson.M{
-			{"isTrashed": bson.M{"$exists": false}},
-			{"isTrashed": false},
-		},
+		"isTrashed": false,
+	}
+
+	if wallet != "" {
+		filter["walletAddress"] = wallet
 	}
 
 	if isBlockchain {
 		filter["txHash"] = bson.M{"$ne": ""}
 	}
 
-	opts := options.Find().SetSort(bson.M{"uploadedAt": -1})
+	log.Printf("filter: %+v", filter)
+
+	// Sort by uploadedAt descending
+	opts := options.Find().SetSort(bson.D{{Key: "uploadedAt", Value: -1}})
+	
 	cursor, err := col.Find(ctx, filter, opts)
+	log.Printf("cursor error: %v", err)
+	
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"success": true, "files": []models.FileRecord{}, "count": 0})
+		log.Printf("❌ MongoDB Find failed: %v", err)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"files":   []models.FileRecord{},
+			"count":   0,
+		})
 		return
 	}
 	defer cursor.Close(ctx)
 
 	var files []models.FileRecord
-	cursor.All(ctx, &files)
+	err = cursor.All(ctx, &files)
+	log.Printf("decode error: %v", err)
+
+	if err != nil {
+		log.Printf("❌ Failed to decode files: %v", err)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"files":   []models.FileRecord{},
+			"count":   0,
+		})
+		return
+	}
+
 	if files == nil {
 		files = []models.FileRecord{}
 	}
 
+	log.Printf("files found: %d", len(files))
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
+		"files":   files,
 		"count":   len(files),
-		"data":    files,
 	})
 }
 
@@ -121,7 +130,7 @@ func RevokeFile(c *gin.Context) {
 	)
 
 	// Notification
-	go CreateNotification(strings.ToLower(record.WalletAddress), "File revoked: "+record.Filename, "warning", fileID)
+	go CreateNotification(strings.ToLower(record.Owner), "File revoked: "+record.Filename, "warning", fileID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -157,55 +166,32 @@ func GetStats(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	filter := bson.M{"isDeleted": bson.M{"$ne": true}}
+	baseFilter := bson.M{"isTrashed": false}
 	if wallet != "" {
-		filter["walletAddress"] = bson.M{
-			"$regex":   "^" + wallet + "$",
-			"$options": "i",
-		}
+		baseFilter["walletAddress"] = wallet
 	}
 
-	total, _    := collection.CountDocuments(ctx, filter)
-	
-	validFilter := bson.M{"status": "valid", "isDeleted": bson.M{"$ne": true}}
+	total, _ := collection.CountDocuments(ctx, baseFilter)
+
+	validFilter := bson.M{"status": "valid", "isTrashed": false}
 	if wallet != "" {
-		validFilter["walletAddress"] = bson.M{
-			"$regex":   "^" + wallet + "$",
-			"$options": "i",
-		}
+		validFilter["walletAddress"] = wallet
 	}
-	valid, _    := collection.CountDocuments(ctx, validFilter)
-	
-	tamperedFilter := bson.M{"status": "tampered", "isDeleted": bson.M{"$ne": true}}
+	valid, _ := collection.CountDocuments(ctx, validFilter)
+
+	tamperedFilter := bson.M{"status": "tampered", "isTrashed": false}
 	if wallet != "" {
-		tamperedFilter["walletAddress"] = bson.M{
-			"$regex":   "^" + wallet + "$",
-			"$options": "i",
-		}
+		tamperedFilter["walletAddress"] = wallet
 	}
 	tampered, _ := collection.CountDocuments(ctx, tamperedFilter)
-	
-	revokedFilter := bson.M{"status": "revoked", "isDeleted": bson.M{"$ne": true}}
-	if wallet != "" {
-		revokedFilter["walletAddress"] = bson.M{
-			"$regex":   "^" + wallet + "$",
-			"$options": "i",
-		}
-	}
-	revoked, _  := collection.CountDocuments(ctx, revokedFilter)
-	
-
 
 	// Fetch latest 5 verification logs for this wallet
 	var recentLogs []models.FileRecord
-	logsFilter := bson.M{"verifiedAt": bson.M{"$exists": true}, "isDeleted": bson.M{"$ne": true}}
+	logsFilter := bson.M{"verifiedAt": bson.M{"$exists": true}, "isTrashed": false}
 	if wallet != "" {
-		logsFilter["walletAddress"] = bson.M{
-			"$regex":   "^" + wallet + "$",
-			"$options": "i",
-		}
+		logsFilter["walletAddress"] = wallet
 	}
-	
+
 	opts := options.Find().SetSort(bson.M{"verifiedAt": -1}).SetLimit(5)
 	cursor, err := collection.Find(ctx, logsFilter, opts)
 	if err == nil {
@@ -218,11 +204,10 @@ func GetStats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"stats": models.Stats{
-			Total:    total,
-			Valid:    valid,
-			Tampered: tampered,
-			Revoked:  revoked,
+		"stats": gin.H{
+			"total":    total,
+			"valid":    valid,
+			"tampered": tampered,
 		},
 		"recentLogs": recentLogs,
 	})
@@ -312,7 +297,7 @@ func UpdateTxHash(c *gin.Context) {
 
 	// Notification — upload success
 	go CreateNotification(
-		strings.ToLower(record.WalletAddress),
+		strings.ToLower(record.Owner),
 		"File uploaded & sealed on blockchain ✅: "+record.Filename,
 		"success",
 		fileID,
@@ -359,7 +344,7 @@ func GetTrashFiles(c *gin.Context) {
 
 	filter := bson.M{"isTrashed": true}
 	if wallet != "" {
-		filter["walletAddress"] = wallet
+		filter["walletAddress"] = strings.ToLower(wallet)
 	}
 
 	cursor, err := col.Find(ctx, filter)
@@ -427,14 +412,14 @@ func PublicVerify(c *gin.Context) {
 		return
 	}
 
-	wallet := record.WalletAddress
+	wallet := record.Owner
 	if len(wallet) > 12 {
 		wallet = wallet[:8] + "..." + wallet[len(wallet)-4:]
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"fileId":     record.FileID,
-		"filename":   record.Filename,
+		"fileName":   record.Filename,
 		"status":     record.Status,
 		"hash":       record.OriginalHash,
 		"txHash":     record.TxHash,
@@ -443,4 +428,112 @@ func PublicVerify(c *gin.Context) {
 		"network":    "Ethereum Sepolia Testnet",
 	})
 }
+
+// ── DOWNLOAD ORIGINAL ───────────────────────────
+func DownloadOriginal(c *gin.Context) {
+	fileId := c.Param("id")
+
+	col := database.GetCollection("files")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var record models.FileRecord
+	if err := col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	filename := record.Filename
+	if filename == "" {
+		filename = "restored_file"
+	}
+
+	// ✅ Correct MIME type based on file extension
+	mimeType := getMimeType(filename)
+
+	// ✅ Local backup check
+	for _, path := range []string{
+		record.BackupPath,
+		record.VaultPath,
+	} {
+		if path != "" && !strings.HasPrefix(path, "http") {
+			if _, err := os.Stat(path); err == nil {
+				c.Header("Content-Disposition",
+					fmt.Sprintf(`attachment; filename="%s"`, filename))
+				c.Header("Content-Type", mimeType)
+				c.Header("Access-Control-Allow-Origin", "*")
+				c.Header("Access-Control-Expose-Headers", "Content-Disposition")
+				c.File(path)
+				return
+			}
+		}
+	}
+
+	// ✅ IPFS — complete prefix clean
+	if record.IpfsCID != "" {
+		cid := strings.TrimSpace(record.IpfsCID)
+		cid = strings.TrimPrefix(cid, "https://gateway.pinata.cloud/ipfs/")
+		cid = strings.TrimPrefix(cid, "https://ipfs.io/ipfs/")
+		cid = strings.TrimPrefix(cid, "/ipfs/")
+		cid = strings.TrimPrefix(cid, "ipfs/")
+
+		// ✅ Correct URL
+		ipfsURL := "https://gateway.pinata.cloud/ipfs/" + cid
+		log.Printf("📥 Downloading: %s → %s", filename, ipfsURL)
+
+		client := &http.Client{Timeout: 60 * time.Second}
+		resp, err := client.Get(ipfsURL)
+		if err != nil || resp.StatusCode != 200 {
+			log.Printf("⚠️ Pinata Gateway failed, trying public fallback: %v", err)
+			// Fallback gateway
+			ipfsURL = "https://ipfs.io/ipfs/" + cid
+			resp, err = client.Get(ipfsURL)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "IPFS unavailable"})
+				return
+			}
+		}
+		defer resp.Body.Close()
+
+		// ✅ Correct headers for file type
+		c.Header("Content-Type", mimeType)
+		c.Header("Content-Disposition",
+			fmt.Sprintf(`attachment; filename="%s"`, filename))
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Expose-Headers", "Content-Disposition")
+
+		io.Copy(c.Writer, resp.Body)
+		return
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "File not available for download"})
+}
+
+// ✅ MIME type helper function
+func getMimeType(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".doc":
+		return "application/msword"
+	case ".pdf":
+		return "application/pdf"
+	case ".xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".txt":
+		return "text/plain"
+	case ".zip":
+		return "application/zip"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 

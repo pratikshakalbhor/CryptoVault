@@ -7,6 +7,8 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,6 +30,8 @@ func UploadFile(c *gin.Context) {
 
 	wallet := strings.ToLower(c.PostForm("wallet"))
 	signature := c.PostForm("signature")
+	message := c.PostForm("message")
+	clientFileHash := c.PostForm("fileHash")
 
 	if wallet == "" {
 		wallet = strings.ToLower(c.Request.FormValue("walletAddress"))
@@ -37,13 +41,6 @@ func UploadFile(c *gin.Context) {
 	if wallet == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Wallet address required"})
 		return
-	}
-
-	// 🛡️ SIGNATURE VERIFICATION
-	if signature != "" {
-		// We expect the frontend to sign the SHA-256 hash of the file bytes
-		// But for the sake of the initial verify, we need the hash.
-		// We'll calculate it below, so let's move signature check after hash generation.
 	}
 
 	// Read file bytes for hashing
@@ -57,8 +54,15 @@ func UploadFile(c *gin.Context) {
 	// Hash (stored WITHOUT 0x prefix for consistency)
 	fileHash := strings.ToLower(utils.GenerateSHA256FromBytes(fileBytes))
 
+	// If client provided a hash, we can verify it matches our calculation
+	if clientFileHash != "" && !strings.EqualFold(strings.TrimPrefix(clientFileHash, "0x"), fileHash) {
+		log.Printf("❌ Hash mismatch: Client(%s) != Server(%s)", clientFileHash, fileHash)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File integrity check failed (hash mismatch)"})
+		return
+	}
+
 	collection := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// 🛡️ DUPLICATE PREVENTION (Early Check) — check both with and without 0x prefix
@@ -80,17 +84,29 @@ func UploadFile(c *gin.Context) {
 		return
 	}
 
-	// 🛡️ SIGNATURE VERIFICATION (Continued)
+	// 🛡️ SIGNATURE VERIFICATION
 	if signature != "" {
-		recoveredAddr, err := utils.RecoverSigner(fileHash, signature)
+		if message == "" {
+			// Fallback if message not provided, but we should encourage message
+			message = fmt.Sprintf("Verify file ownership: %s", clientFileHash)
+		}
+
+		recoveredAddr, err := utils.RecoverSigner(message, signature)
 		if err != nil {
 			log.Printf("❌ Signature recovery failed: %v", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid digital signature"})
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "Invalid digital signature",
+			})
 			return
 		}
-		if recoveredAddr != wallet {
+
+		if !strings.EqualFold(recoveredAddr, wallet) {
 			log.Printf("❌ Signer mismatch: %s != %s", recoveredAddr, wallet)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Signature does not match wallet address"})
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "Invalid digital signature",
+			})
 			return
 		}
 		log.Printf("✅ Digital Signature Verified for: %s", recoveredAddr)
@@ -189,19 +205,38 @@ func UploadFile(c *gin.Context) {
 			txHash = clientTxHash
 		}
 
+		// ── SAVE BACKUP ──
+		backupDir := "./vault"
+		if _, err := os.Stat(backupDir); os.IsNotExist(err) {
+			os.MkdirAll(backupDir, 0755)
+		}
+		
+		cleanFilename := strings.ReplaceAll(header.Filename, " ", "_")
+		backupPath := filepath.Join(backupDir, fileID+"_"+cleanFilename)
+		
+		err = os.WriteFile(backupPath, fileBytes, 0644)
+		if err != nil {
+			log.Printf("⚠️ Backup save failed: %v", err)
+		} else {
+			log.Printf("📥 Backup saved to: %s", backupPath)
+		}
+
 		// New file
 		record := models.FileRecord{
 			FileID:        fileID,
 			PublicID:      publicID,
 			Filename:      header.Filename,
+			FileExtension: filepath.Ext(header.Filename),
 			OriginalHash:  fileHash,
-			EncryptedURL:  ipfsURL, // ✅ Pinata IPFS URL (or frontend override)
-			IpfsCID:       ipfsCID, // ✅ IPFS CID for gateway fallback
+			EncryptedURL:  ipfsURL,
+			IpfsCID:       ipfsCID,
 			FileSize:      header.Size,
 			MimeType:      header.Header.Get("Content-Type"),
-			WalletAddress: wallet,
+			Owner:         wallet,
 			TxHash:        txHash,
 			Status:        "valid",
+			BackupPath:    backupPath,
+			VaultPath:     backupPath,
 			ExpiryDate:    expiryDate,
 			UploadedAt:    time.Now(),
 			Version:       1,
