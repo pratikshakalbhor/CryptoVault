@@ -25,9 +25,7 @@ export default function Login({ onConnected }) {
   const [address,          setAddress]          = useState('');
   const [isConnecting,     setIsConnecting]     = useState(false);
 
-  const [storedWallet, setStoredWallet] = useState(() => localStorage.getItem('wallet'));
-
-  const connectMetaMask = async (forcePopup = false) => {
+  const connectMetaMask = async () => {
     if (isConnecting) return;
     setIsConnecting(true);
     setStatus('connecting');
@@ -43,15 +41,14 @@ export default function Login({ onConnected }) {
         return;
       }
 
-      if (forcePopup) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_requestPermissions',
-            params: [{ eth_accounts: {} }],
-          });
-        } catch (err) {
-          if (err.code === 4001) throw err; // Re-throw rejection
-        }
+      // ✅ Force a fresh connection popup every time
+      try {
+        await window.ethereum.request({
+          method: 'wallet_requestPermissions',
+          params: [{ eth_accounts: {} }],
+        });
+      } catch (err) {
+        if (err.code === 4001) throw err; 
       }
 
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
@@ -76,7 +73,6 @@ export default function Login({ onConnected }) {
       }
 
       const walletAddr = accounts[0];
-      localStorage.setItem('wallet', walletAddr);
       setAddress(walletAddr);
       setStatus('connected');
       setTimeout(() => onConnected(walletAddr), 1500);
@@ -97,12 +93,6 @@ export default function Login({ onConnected }) {
   const reset = () => { 
     setStatus('idle'); 
     setError(''); 
-    setStoredWallet(localStorage.getItem('wallet'));
-  };
-
-  const handleDisconnect = () => {
-    localStorage.removeItem('wallet');
-    setStoredWallet(null);
   };
 
   return (
@@ -147,54 +137,26 @@ export default function Login({ onConnected }) {
               </div>
 
               <motion.div className="wallet-options" variants={staggerContainer} initial="initial" animate="animate">
-                {storedWallet ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <motion.button
-                      className="wallet-btn"
-                      variants={cardVariants}
-                      whileHover={{ y: -3, boxShadow: '0 12px 32px rgba(0,212,255,0.15)' }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => connectMetaMask(false)}
-                    >
-                      <span className="wallet-btn-icon">
-                        <CheckCircle size={22} color="var(--accent-teal)" />
-                      </span>
-                      <div className="wallet-btn-info">
-                        <div className="wallet-btn-name">Continue Session</div>
-                        <div className="wallet-btn-desc">As {storedWallet.slice(0,6)}...{storedWallet.slice(-4)}</div>
+                {WALLETS.map(w => (
+                  <motion.button
+                    key={w.id}
+                    className="wallet-btn"
+                    variants={cardVariants}
+                    whileHover={{ y: -3, boxShadow: '0 12px 32px rgba(0,212,255,0.15)' }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => w.id === 'metamask' ? connectMetaMask() : null}
+                  >
+                    <span className="wallet-btn-icon">{w.icon}</span>
+                    <div className="wallet-btn-info">
+                      <div className="wallet-btn-name">
+                        {w.name}
+                        {w.popular && <span className="popular-badge">Popular</span>}
                       </div>
-                      <motion.span className="wallet-btn-arrow" whileHover={{ x: 4 }}>→</motion.span>
-                    </motion.button>
-                    
-                    <button 
-                      onClick={handleDisconnect}
-                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline', marginTop: '4px' }}
-                    >
-                      Not you? Disconnect
-                    </button>
-                  </div>
-                ) : (
-                  WALLETS.map(w => (
-                    <motion.button
-                      key={w.id}
-                      className="wallet-btn"
-                      variants={cardVariants}
-                      whileHover={{ y: -3, boxShadow: '0 12px 32px rgba(0,212,255,0.15)' }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => w.id === 'metamask' ? connectMetaMask(true) : null}
-                    >
-                      <span className="wallet-btn-icon">{w.icon}</span>
-                      <div className="wallet-btn-info">
-                        <div className="wallet-btn-name">
-                          {w.name}
-                          {w.popular && <span className="popular-badge">Popular</span>}
-                        </div>
-                        <div className="wallet-btn-desc">{w.desc}</div>
-                      </div>
-                      <motion.span className="wallet-btn-arrow" whileHover={{ x: 4 }}>→</motion.span>
-                    </motion.button>
-                  ))
-                )}
+                      <div className="wallet-btn-desc">{w.desc}</div>
+                    </div>
+                    <motion.span className="wallet-btn-arrow" whileHover={{ x: 4 }}>→</motion.span>
+                  </motion.button>
+                ))}
               </motion.div>
 
               <motion.div variants={fadeIn} initial="initial" animate="animate" transition={{ delay: 0.4 }}>

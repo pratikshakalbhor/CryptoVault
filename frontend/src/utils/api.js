@@ -50,17 +50,17 @@ export const uploadFile = async (
   expiry,
   parentId,
   note,
-  signature
+  fileHash
 ) => {
   const formData = new FormData();
 
   formData.append("file", file);
-  formData.append("wallet", wallet || "");
+  formData.append("wallet", (wallet || "").toLowerCase());
 
   if (expiry) formData.append("expiryDate", expiry);
   if (parentId) formData.append("parentFileId", parentId);
   if (note) formData.append("versionNote", note);
-  if (signature) formData.append("signature", signature);
+  if (fileHash) formData.append("fileHash", fileHash);
 
   try {
     const res = await fetch(`${BASE_URL}/api/upload`, {
@@ -203,7 +203,7 @@ export const trashFile = async (fileId) => {
 };
 
 export const restoreFile = async (fileId) => {
-  return apiFetch(`/files/${fileId}/restore`, { method: "POST" });
+  return apiFetch(`/restore/${fileId}`, { method: "POST" });
 };
 
 export const deleteFilePermanently = async (fileId) => {

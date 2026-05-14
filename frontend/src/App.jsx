@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import './index.css';
@@ -26,6 +26,7 @@ const TITLES = {
   '/blockchain-log': 'Blockchain Log',
   '/profile': 'Profile',
 };
+
 function usePageTitle() {
   const { pathname } = useLocation();
   if (pathname.startsWith('/files/')) return 'File Details';
@@ -60,7 +61,6 @@ function AppLayout({ walletAddress, onLogout }) {
               <Route path="/blockchain-log" element={<BlockchainLog walletAddress={walletAddress} />} />
               <Route path="/files/:id" element={<FileDetails walletAddress={walletAddress} />} />
               <Route path="/profile" element={<Profile walletAddress={walletAddress} onLogout={onLogout} />} />
-              {/* catch-all */}
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </div>
@@ -70,58 +70,84 @@ function AppLayout({ walletAddress, onLogout }) {
   );
 }
 
-// ── Protected Route Wrapper ─────────────────────────────────────────
-function RequireAuth({ children, walletAddress }) {
-  const location = useLocation();
-  if (!walletAddress) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-  }
-  return children;
-}
-
 // ── Root App ────────────────────────────────────────────────────────
 export default function App() {
   const [walletAddress, setWalletAddress] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const location = useLocation();
+
+  // Public routes (don't require wallet)
+  const isPublicRoute = location.pathname.startsWith('/verify-public/');
+
+  useEffect(() => {
+    // Fresh connect mandatory — we don't auto-load from localStorage here anymore
+    setLoading(false);
+
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length === 0) {
+          handleLogout();
+        } else {
+          setWalletAddress(accounts[0]);
+        }
+      });
+
+      window.ethereum.on('chainChanged', () => {
+        window.location.reload();
+      });
+    }
+
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeAllListeners('accountsChanged');
+        window.ethereum.removeAllListeners('chainChanged');
+      }
+    };
+  }, []);
+
+  const handleConnected = (address) => {
+    setWalletAddress(address);
+  };
 
   const handleLogout = () => {
+    localStorage.removeItem('walletAddress');
     localStorage.removeItem('wallet');
+    localStorage.removeItem('token');
+    sessionStorage.clear();
     setWalletAddress(null);
   };
 
-
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'center', height: '100vh',
+        background: '#080c10', color: '#00d4ff'
+      }}>
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <>
       <Toaster position="top-right" toastOptions={{
         style: { background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }
       }} />
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/verify-public/:fileId" element={<PublicVerify />} />
-        
-        <Route 
-          path="/login" 
-          element={
-            walletAddress ? (
-              <Navigate to="/dashboard" replace />
-            ) : (
-              <Login onConnected={addr => {
-                localStorage.setItem('wallet', addr);
-                setWalletAddress(addr);
-              }} />
-            )
-          } 
+      
+      {/* Handle Public routes first */}
+      {isPublicRoute ? (
+        <Routes>
+          <Route path="/verify-public/:fileId" element={<PublicVerify />} />
+        </Routes>
+      ) : !walletAddress ? (
+        <Login onConnected={handleConnected} />
+      ) : (
+        <AppLayout
+          walletAddress={walletAddress}
+          onLogout={handleLogout}
         />
-        
-        <Route 
-          path="/*" 
-          element={
-            <RequireAuth walletAddress={walletAddress}>
-              <AppLayout walletAddress={walletAddress} onLogout={handleLogout} />
-            </RequireAuth>
-          } 
-        />
-      </Routes>
+      )}
     </>
   );
 }
