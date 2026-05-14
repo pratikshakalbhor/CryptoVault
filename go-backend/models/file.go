@@ -4,14 +4,16 @@ import "time"
 
 type FileRecord struct {
 	FileID        string     `json:"fileId"        bson:"fileId"`
-	Filename      string     `json:"filename"      bson:"filename"`
+	Filename      string     `json:"fileName"      bson:"filename"`
+	FileExtension string     `json:"fileExtension" bson:"fileExtension"`
 	OriginalHash  string     `json:"originalHash"  bson:"originalHash"`
 	EncryptedURL  string     `json:"encryptedUrl"  bson:"encryptedUrl"`
 	IpfsCID       string     `json:"ipfsCID"       bson:"ipfsCID"`
-	BackupPath    string     `json:"backupPath"    bson:"backupPath"`
 	FileSize      int64      `json:"fileSize"      bson:"fileSize"`
 	MimeType      string     `json:"mimeType"      bson:"mimeType"`
-	WalletAddress string     `json:"walletAddress" bson:"walletAddress"`
+	BackupPath    string     `json:"backupPath"    bson:"backupPath"`
+	VaultPath     string     `json:"vaultPath"     bson:"vaultPath"`
+	Owner         string     `json:"owner"         bson:"walletAddress"`
 	TxHash        string     `json:"txHash"        bson:"txHash"`
 	BlockNumber   uint64     `json:"blockNumber"   bson:"blockNumber"`
 	Status        string     `json:"status"        bson:"status"`
