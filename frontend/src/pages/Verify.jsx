@@ -4,7 +4,7 @@ import { pageVariants, cardVariants } from '../utils/animations';
 import { getTxUrl, verifyFileOnChain } from '../utils/blockchain';
 import '../styles/Verify.css';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '') + '/api';
 
 const AUDIT_STEPS = [
   'Reading file bytes...',

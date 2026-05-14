@@ -4,7 +4,7 @@ import { pageVariants, cardVariants, fadeIn } from '../utils/animations';
 import { sealFileOnBlockchain, getTxUrl } from '../utils/blockchain';
 import '../styles/Upload.css';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '') + '/api';
 
 const STEPS = [
   { pct: 20,  label: 'Generating SHA-256 Hash...',       icon: '#' },
