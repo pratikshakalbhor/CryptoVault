@@ -1,0 +1,374 @@
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API = `${API_URL}/api`;
+
+const cardV = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+};
+
+const STATUS_CONFIG = {
+  valid:    { color: '#14b8a6', bg: 'rgba(20,184,166,0.1)',
+              border: 'rgba(20,184,166,0.3)', label: 'VALID',    icon: '✅' },
+  tampered: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)',
+              border: 'rgba(239,68,68,0.3)',  label: 'TAMPERED', icon: '⚠️' },
+  pending:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',
+              border: 'rgba(245,158,11,0.3)', label: 'PENDING',  icon: '⏳' },
+  revoked:  { color: '#64748b', bg: 'rgba(100,116,139,0.1)',
+              border: 'rgba(100,116,139,0.3)',label: 'REVOKED',  icon: '🔒' },
+};
+
+export default function RecoveryHub({ walletAddress, onNotify }) {
+  const [files,      setFiles]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [recovering, setRecovering] = useState('');
+  const [filter,     setFilter]     = useState('tampered');
+  const [search,     setSearch]     = useState('');
+  const [selected,   setSelected]   = useState(null);
+
+  /* ── Fetch files ── */
+  const fetchFiles = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API}/files?wallet=${walletAddress}`);
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error("Server returned non-JSON:", text.slice(0, 100));
+        throw new Error("Invalid response format from server");
+      }
+
+      const data = await res.json();
+      setFiles(data.files || []);
+    } catch (e) {
+      console.error("RecoveryHub Fetch Error:", e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress]);
+
+  useEffect(() => { fetchFiles(); }, [fetchFiles]);
+
+  /* ── Download / Restore ── */
+  const handleRestore = async (file) => {
+    setRecovering(file.fileId);
+    try {
+      const res = await fetch(
+        `${API}/files/${file.fileId}/download`
+      );
+      if (!res.ok) throw new Error('Download failed');
+
+      const blob      = await res.blob();
+      const url       = window.URL.createObjectURL(blob);
+      const a         = document.createElement('a');
+      a.href          = url;
+      a.download      = file.filename || 'restored_file';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      /* update status */
+      await fetch(`${API}/files/${file.fileId}/restore`, { method: 'POST' });
+      onNotify?.('✅ File restored successfully!', 'success');
+      fetchFiles();
+    } catch (e) {
+      onNotify?.('❌ Restore failed: ' + e.message, 'error');
+    } finally {
+      setRecovering('');
+    }
+  };
+
+  /* ── Filtered list ── */
+  const filtered = files.filter(f => {
+    const matchStatus = filter === 'all' || f.status === filter;
+    const matchSearch = !search ||
+      f.filename?.toLowerCase().includes(search.toLowerCase()) ||
+      f.fileId?.toLowerCase().includes(search.toLowerCase());
+    return matchStatus && matchSearch;
+  });
+
+  const tamperedCount = files.filter(f => f.status === 'tampered').length;
+
+  /* ── Styles ── */
+  const S = {
+    page:  { maxWidth: 900, margin: '0 auto',
+              padding: '28px 24px', color: 'var(--text, #e2e8f0)' },
+    card:  { background: 'var(--surface, #111820)',
+              border: '1px solid var(--border, #1e2d3d)',
+              borderRadius: 14, padding: '20px 22px', marginBottom: 16 },
+    title: { fontSize: 22, fontWeight: 800,
+              color: 'var(--text, #e2e8f0)', marginBottom: 4 },
+    sub:   { fontSize: 13, color: 'var(--muted, #64748b)', marginBottom: 24 },
+    tab:   (active) => ({
+      padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+      border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+      background: active
+        ? 'rgba(20,184,166,0.2)' : 'transparent',
+      color: active ? '#14b8a6' : 'var(--muted, #64748b)',
+      transition: 'all 0.2s',
+    }),
+    input: {
+      background: 'var(--surface, #111820)',
+      border: '1px solid var(--border, #1e2d3d)',
+      borderRadius: 8, padding: '8px 14px', fontSize: 13,
+      color: 'var(--text, #e2e8f0)', fontFamily: 'inherit',
+      width: '100%', outline: 'none',
+    },
+    fileRow: (status) => {
+      const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+      return {
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: '14px 16px', borderRadius: 10, marginBottom: 10,
+        background: cfg.bg, border: `1px solid ${cfg.border}`,
+        cursor: 'pointer', transition: 'transform 0.15s',
+      };
+    },
+    btnRestore: {
+      background: 'rgba(20,184,166,0.15)',
+      border: '1px solid rgba(20,184,166,0.4)',
+      color: '#14b8a6', borderRadius: 8, padding: '6px 16px',
+      fontSize: 12, fontWeight: 700, cursor: 'pointer',
+      fontFamily: 'inherit', whiteSpace: 'nowrap',
+      transition: 'all 0.2s',
+    },
+    mono: { fontFamily: 'var(--font-mono, monospace)', fontSize: 11 },
+  };
+
+  return (
+    <div style={S.page}>
+      {/* Header */}
+      <div style={S.title}>🔄 Recovery Hub</div>
+      <div style={S.sub}>
+        Detect, audit, and restore tampered or compromised files
+      </div>
+
+      {/* ── Stats Row ── */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20,
+        flexWrap: 'wrap' }}>
+        {[
+          { label: 'Total Files',   value: files.length,
+            color: '#00d4ff' },
+          { label: 'Tampered',      value: tamperedCount,
+            color: '#ef4444' },
+          { label: 'Valid',
+            value: files.filter(f => f.status === 'valid').length,
+            color: '#14b8a6' },
+          { label: 'Pending',
+            value: files.filter(f => f.status === 'pending').length,
+            color: '#f59e0b' },
+        ].map(({ label, value, color }) => (
+          <motion.div key={label}
+            variants={cardV} initial="initial" animate="animate"
+            style={{ ...S.card, flex: '1 1 120px',
+              minWidth: 110, marginBottom: 0, textAlign: 'center' }}>
+            <div style={{ fontSize: 28, fontWeight: 900, color }}>
+              {loading ? '--' : value}
+            </div>
+            <div style={{ fontSize: 11,
+              color: 'var(--muted, #64748b)', marginTop: 2 }}>
+              {label}
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* ── Filter + Search ── */}
+      <motion.div style={{ ...S.card, marginBottom: 16 }}
+        variants={cardV} initial="initial" animate="animate">
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap',
+          marginBottom: 14 }}>
+          {['all', 'tampered', 'valid', 'pending', 'revoked'].map(f => (
+            <button key={f} style={S.tab(filter === f)}
+              onClick={() => setFilter(f)}>
+              {f === 'tampered' && tamperedCount > 0
+                ? `⚠️ Tampered (${tamperedCount})`
+                : f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+        <input
+          style={S.input}
+          placeholder="🔍 Search by filename or file ID..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </motion.div>
+
+      {/* ── File List ── */}
+      <AnimatePresence mode="wait">
+        {loading ? (
+          <motion.div key="loading"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            style={{ textAlign: 'center', padding: 40,
+              color: 'var(--muted)' }}>
+            Loading files...
+          </motion.div>
+        ) : filtered.length === 0 ? (
+          <motion.div key="empty"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            style={{ ...S.card, textAlign: 'center',
+              padding: 40, color: 'var(--muted)' }}>
+            {filter === 'tampered'
+              ? '✅ No tampered files found!'
+              : 'No files match your filter.'}
+          </motion.div>
+        ) : (
+          <motion.div key="list"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            {filtered.map((file, i) => {
+              const cfg = STATUS_CONFIG[file.status]
+                       || STATUS_CONFIG.pending;
+              const isSelected = selected === file.fileId;
+              return (
+                <motion.div key={file.fileId}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.04 }}
+                  whileHover={{ scale: 1.005 }}>
+
+                  {/* ── File Row ── */}
+                  <div style={S.fileRow(file.status)}
+                    onClick={() =>
+                      setSelected(isSelected ? null : file.fileId)}>
+                    {/* Icon */}
+                    <span style={{ fontSize: 22, flexShrink: 0 }}>
+                      {cfg.icon}
+                    </span>
+
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700,
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap' }}>
+                        {file.filename || 'Unknown file'}
+                      </div>
+                      <div style={{ ...S.mono,
+                        color: 'var(--muted)', marginTop: 2 }}>
+                        {file.fileId} ·{' '}
+                        {file.uploadedAt
+                          ? new Date(file.uploadedAt)
+                              .toLocaleDateString()
+                          : '--'}
+                      </div>
+                    </div>
+
+                    {/* Status badge */}
+                    <span style={{
+                      background: cfg.bg, color: cfg.color,
+                      border: `1px solid ${cfg.border}`,
+                      borderRadius: 20, padding: '2px 10px',
+                      fontSize: 10, fontWeight: 800,
+                      flexShrink: 0,
+                    }}>
+                      {cfg.label}
+                    </span>
+
+                    {/* Restore button — tampered only */}
+                    {file.status === 'tampered' && (
+                      <button
+                        style={S.btnRestore}
+                        disabled={recovering === file.fileId}
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleRestore(file);
+                        }}>
+                        {recovering === file.fileId
+                          ? '⏳ Restoring...'
+                          : '🔄 Restore'}
+                      </button>
+                    )}
+
+                    {/* Expand arrow */}
+                    <span style={{
+                      color: 'var(--muted)', fontSize: 12,
+                      flexShrink: 0,
+                      transform: isSelected
+                        ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s',
+                    }}>▼</span>
+                  </div>
+
+                  {/* ── Expanded Detail ── */}
+                  <AnimatePresence>
+                    {isSelected && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        style={{ overflow: 'hidden' }}>
+                        <div style={{
+                          ...S.card, marginTop: -6,
+                          marginBottom: 10,
+                          borderTopLeftRadius: 0,
+                          borderTopRightRadius: 0,
+                        }}>
+                          {[
+                            { label: 'File Hash',
+                              val: file.originalHash },
+                            { label: 'TX Hash',
+                              val: file.txHash },
+                            { label: 'File Size',
+                              val: file.fileSize
+                                ? `${(file.fileSize/1024).toFixed(1)} KB`
+                                : '--' },
+                            { label: 'Wallet',
+                              val: file.walletAddress },
+                          ].map(({ label, val }) => (
+                            <div key={label} style={{
+                              display: 'flex', gap: 12,
+                              padding: '8px 0',
+                              borderBottom:
+                                '1px solid var(--border, #1e2d3d)',
+                            }}>
+                              <span style={{
+                                fontSize: 11, width: 80,
+                                flexShrink: 0,
+                                color: 'var(--muted)',
+                              }}>{label}</span>
+                              <span style={{
+                                ...S.mono, wordBreak: 'break-all',
+                                color: 'var(--text)',
+                              }}>
+                                {val
+                                  ? (val.startsWith('0x')
+                                    ? `${val.slice(0,16)}...`
+                                    : val)
+                                  : '--'}
+                              </span>
+                            </div>
+                          ))}
+
+                          {/* TX link */}
+                          {file.txHash &&
+                           file.txHash !== 'pending' &&
+                           file.txHash.startsWith('0x') && (
+                            <div style={{ marginTop: 12 }}>
+                              <a
+                                href={`https://sepolia.etherscan.io/tx/${file.txHash}`}
+                                target="_blank" rel="noreferrer"
+                                style={{
+                                  fontSize: 12, color: '#00d4ff',
+                                  textDecoration: 'none',
+                                }}>
+                                🔗 View on Etherscan ↗
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

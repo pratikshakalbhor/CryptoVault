@@ -110,8 +110,8 @@ export default function Dashboard({ walletAddress }) {
           <div className="sec-hdr">
             <span className="sec-title"><Activity size={18} /> Verification Activity (Last 7 Days)</span>
           </div>
-          <div style={{ width: '100%', height: 300, minWidth: 0, minHeight: 0, marginTop: 10 }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ width: '100%', height: 300, minHeight: 300, minWidth: 0, position: 'relative', marginTop: 10 }}>
+            <ResponsiveContainer width="99%" height="100%">
               <LineChart data={stats.chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="day" stroke="rgba(255,255,255,0.3)" fontSize={12} tickLine={false} axisLine={false} />

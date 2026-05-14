@@ -9,6 +9,7 @@ import {
   User,
   LogOut,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 
 const NAV = [
@@ -19,6 +20,7 @@ const NAV = [
   { path: '/trash',          label: 'Trash',          icon: Trash2 },
   { path: '/blockchain-log', label: 'Blockchain Log', icon: Activity },
   { path: '/profile',        label: 'Profile',        icon: User },
+  { path: '/recovery',       label: 'Recovery Hub',    icon: RotateCcw },
 ];
 
 export default function Sidebar({ onLogout }) {

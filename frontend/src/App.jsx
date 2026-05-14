@@ -15,6 +15,7 @@ import FileDetails from './pages/FileDetails';
 import Profile from './pages/Profile';
 import PublicVerify from './pages/PublicVerify';
 import Trash from './pages/Trash';
+import RecoveryHub from './pages/RecoveryHub';
 
 // ── Title map (path → label) ───────────────────────────────────────
 const TITLES = {
@@ -25,6 +26,7 @@ const TITLES = {
   '/trash': 'Trash',
   '/blockchain-log': 'Blockchain Log',
   '/profile': 'Profile',
+  '/recovery': 'Recovery Hub',
 };
 
 function usePageTitle() {
@@ -61,6 +63,7 @@ function AppLayout({ walletAddress, onLogout }) {
               <Route path="/blockchain-log" element={<BlockchainLog walletAddress={walletAddress} />} />
               <Route path="/files/:id" element={<FileDetails walletAddress={walletAddress} />} />
               <Route path="/profile" element={<Profile walletAddress={walletAddress} onLogout={onLogout} />} />
+              <Route path="/recovery" element={<RecoveryHub walletAddress={walletAddress} onNotify={(msg, type) => {}} />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </div>

@@ -13,41 +13,55 @@ export default function NotificationDropdown({ walletAddress }) {
   const runSecurityAudit = useCallback(async () => {
     if (!walletAddress) return;
     try {
-      const res = await getAllFiles(walletAddress);
+      const res   = await getAllFiles(walletAddress);
       const files = res.files || [];
-      let alerts = [];
+      let alerts  = [];
 
       files.forEach(f => {
-        // 1. Tamper Check
+        // ✅ Tamper — CRITICAL
         if (f.status === 'tampered') {
           alerts.push({
-            id: `t-${f.fileId}`,
-            type: 'critical',
-            title: 'Tamper Detected',
-            text: `${f.filename} signature mismatch!`,
-            page: '/verify'
+            id:    `t-${f.fileId}`,
+            type:  'critical',
+            title: '🚨 TAMPER DETECTED',
+            text:  `"${f.filename}" — hash mismatch on blockchain!`,
+            page:  '/verify',
+            time:  f.verifiedAt || f.uploadedAt,
           });
         }
-        // 2. Expiry Check
+        // ✅ Pending seal
+        if (f.txHash === 'pending' || f.status === 'pending') {
+          alerts.push({
+            id:    `p-${f.fileId}`,
+            type:  'warning',
+            title: '⏳ Blockchain Seal Pending',
+            text:  `"${f.filename}" not yet sealed on Ethereum.`,
+            page:  '/my-files',
+            time:  f.uploadedAt,
+          });
+        }
+        // ✅ Expiry
         if (f.expiryDate && new Date(f.expiryDate) < new Date()) {
           alerts.push({
-            id: `e-${f.fileId}`,
-            type: 'info',
-            title: 'File Expired',
-            text: `${f.filename} is no longer valid.`,
-            page: '/my-files'
+            id:    `e-${f.fileId}`,
+            type:  'info',
+            title: '📅 File Expired',
+            text:  `"${f.filename}" is no longer valid.`,
+            page:  '/my-files',
+            time:  f.expiryDate,
           });
         }
       });
 
-      // 3. Storage Check
+      // ✅ Storage warning
       if (files.length > 40) {
         alerts.push({
-          id: 'storage-warn',
-          type: 'warning',
-          title: 'Storage Full',
-          text: 'Vault capacity over 80%. Clean up files.',
-          page: '/my-files'
+          id:    'storage-warn',
+          type:  'warning',
+          title: '💾 Storage Warning',
+          text:  `Vault at ${files.length} files — clean up recommended.`,
+          page:  '/my-files',
+          time:  new Date().toISOString(),
         });
       }
 
@@ -84,17 +98,21 @@ export default function NotificationDropdown({ walletAddress }) {
   return (
     <div className="notification-wrapper" ref={dropdownRef} style={{ position: 'relative' }}>
       {/* Bell Button */}
-      <div
-        className="nav-icon-btn"
-        onClick={() => setIsOpen(!isOpen)}
-        style={{ cursor: 'pointer', color: 'var(--text-secondary)', position: 'relative', padding: '8px' }}
-      >
+      <div onClick={() => setIsOpen(!isOpen)}
+        style={{ cursor: 'pointer', position: 'relative', padding: '8px' }}>
         <Bell size={20} />
         {notifications.length > 0 && (
           <span style={{
             position: 'absolute', top: '6px', right: '6px',
-            background: '#ef4444', width: '10px', height: '10px',
-            borderRadius: '50%', border: '2px solid var(--bg-navbar)'
+            background: notifications.some(n => n.type === 'critical')
+              ? '#ef4444'   // ← Critical = red
+              : '#f59e0b',  // ← Warning = yellow
+            width: '10px', height: '10px',
+            borderRadius: '50%',
+            border: '2px solid var(--bg-navbar)',
+            // ✅ Pulse animation critical sathi
+            animation: notifications.some(n => n.type === 'critical')
+              ? 'pulse 1.5s infinite' : 'none',
           }} />
         )}
       </div>
@@ -124,21 +142,31 @@ export default function NotificationDropdown({ walletAddress }) {
               </div>
             ) : (
               notifications.map((n) => (
-                <div
-                  key={n.id}
+                <div key={n.id}
                   onClick={() => { navigate(n.page); setIsOpen(false); }}
-                  style={{
-                    padding: '12px 15px', borderBottom: '1px solid var(--border)',
-                    display: 'flex', gap: '12px', cursor: 'pointer',
-                    transition: 'background 0.2s'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  style={{ padding: '12px 15px',
+                    borderBottom: '1px solid var(--border)',
+                    display: 'flex', gap: '12px', cursor: 'pointer' }}
                 >
                   <div style={{ marginTop: '2px' }}>{getIcon(n.type)}</div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '2px', color: 'var(--text-primary)' }}>{n.title}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{n.text}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 600,
+                      marginBottom: '2px',
+                      color: n.type === 'critical' ? '#ef4444' : 'var(--text-primary)' }}>
+                      {n.title}
+                    </div>
+                    <div style={{ fontSize: '11px',
+                      color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      {n.text}
+                    </div>
+                    {/* ✅ Time add kara */}
+                    {n.time && (
+                      <div style={{ fontSize: '10px',
+                        color: 'var(--muted)', marginTop: 4,
+                        fontFamily: 'var(--font-mono, monospace)' }}>
+                        🕐 {new Date(n.time).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
