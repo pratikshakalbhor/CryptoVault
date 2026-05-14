@@ -232,7 +232,7 @@ func UploadFile(c *gin.Context) {
 			IpfsCID:       ipfsCID,
 			FileSize:      header.Size,
 			MimeType:      header.Header.Get("Content-Type"),
-			Owner:         wallet,
+			WalletAddress: wallet,
 			TxHash:        txHash,
 			Status:        "valid",
 			BackupPath:    backupPath,

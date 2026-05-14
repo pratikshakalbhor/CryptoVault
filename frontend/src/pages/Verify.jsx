@@ -341,17 +341,33 @@ export default function Verify({ onNotify, walletAddress }) {
     if (!result?.fileId) return;
     setLoading(true);
     try {
-      const { restoreFile } = await import('../utils/api');
-      const data = await restoreFile(result.fileId);
-      
+      const res  = await fetch(`${API}/files/${result.fileId}/restore`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+
       if (data.success) {
-        setRestoredPath(data.downloadPath);
-        toast.success('✔ Original file restored successfully');
-        if (typeof onNotify === 'function') onNotify('✅ File restored!', 'success');
+        if (data.restoreUrl) {
+          // Cloud URL — open in new tab
+          window.open(data.restoreUrl, '_blank');
+        } else if (data.downloadPath) {
+          // Local restore — download
+          const dlRes  = await fetch(`${API}/files/${result.fileId}/download`);
+          const blob   = await dlRes.blob();
+          const url    = URL.createObjectURL(blob);
+          const a      = document.createElement('a');
+          a.href       = url;
+          a.download   = data.filename || result.filename;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+        setRestoredPath(data.downloadPath || data.restoreUrl || 'restored');
+        toast.success('✅ File restored successfully!');
       } else {
         throw new Error(data.message || 'Restore failed');
       }
     } catch (err) {
+      console.error('Restore error:', err);
       toast.error('Restore failed: ' + err.message);
     } finally {
       setLoading(false);

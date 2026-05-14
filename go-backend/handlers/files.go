@@ -130,7 +130,7 @@ func RevokeFile(c *gin.Context) {
 	)
 
 	// Notification
-	go CreateNotification(strings.ToLower(record.Owner), "File revoked: "+record.Filename, "warning", fileID)
+	go CreateNotification(strings.ToLower(record.WalletAddress), "File revoked: "+record.Filename, "warning", fileID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -297,7 +297,7 @@ func UpdateTxHash(c *gin.Context) {
 
 	// Notification — upload success
 	go CreateNotification(
-		strings.ToLower(record.Owner),
+		strings.ToLower(record.WalletAddress),
 		"File uploaded & sealed on blockchain ✅: "+record.Filename,
 		"success",
 		fileID,
@@ -412,7 +412,7 @@ func PublicVerify(c *gin.Context) {
 		return
 	}
 
-	wallet := record.Owner
+	wallet := record.WalletAddress
 	if len(wallet) > 12 {
 		wallet = wallet[:8] + "..." + wallet[len(wallet)-4:]
 	}

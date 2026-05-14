@@ -13,7 +13,7 @@ type FileRecord struct {
 	MimeType      string     `json:"mimeType"      bson:"mimeType"`
 	BackupPath    string     `json:"backupPath"    bson:"backupPath"`
 	VaultPath     string     `json:"vaultPath"     bson:"vaultPath"`
-	Owner         string     `json:"owner"         bson:"walletAddress"`
+	WalletAddress string     `json:"walletAddress" bson:"walletAddress"`
 	TxHash        string     `json:"txHash"        bson:"txHash"`
 	BlockNumber   uint64     `json:"blockNumber"   bson:"blockNumber"`
 	Status        string     `json:"status"        bson:"status"`

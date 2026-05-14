@@ -22,7 +22,7 @@ func RegisterRoutes(r *gin.Engine) {
 		api.PATCH("/files/:id/tx", handlers.UpdateTxHash)
 		api.GET("/files/:id/versions", handlers.GetFileVersions)
 		api.GET("/files/:id/certificate", handlers.DownloadCertificate)
-		api.POST("/restore/:id", handlers.RestoreFile)
+		api.POST("/files/:id/restore", handlers.RestoreFile)
 		api.GET("/files/:id/download", handlers.DownloadOriginal)
 		api.DELETE("/files/:id", handlers.TrashFile)
 		api.POST("/files/:id/untrash", handlers.RestoreFromTrash)
