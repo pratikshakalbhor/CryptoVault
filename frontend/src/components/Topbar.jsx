@@ -26,22 +26,25 @@ export default function Topbar({ pageTitle, walletAddress, onDisconnect }) {
 
 
   return (
-    <header className="topbar">
-      {/* Left — Page title */}
-      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-        <div style={{ 
-          fontSize: 15, 
-          fontWeight: 700, 
-          color: 'var(--text-primary)', 
-          lineHeight: 1.2, 
-          whiteSpace: 'nowrap', 
-          overflow: 'hidden', 
-          textOverflow: 'ellipsis' 
-        }}>
-          {pageTitle}
+    <header className="topbar" style={{ padding: '0 24px', height: '64px' }}>
+      {/* Left — Breadcrumb */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ padding: '6px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+          <ShieldCheck size={16} color="var(--accent-cyan)" />
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-          Blockchain Forensic Vault / {pageTitle}
+        <div>
+          <div style={{ 
+            fontSize: 14, 
+            fontWeight: 800, 
+            color: 'var(--text-primary)', 
+            lineHeight: 1,
+            letterSpacing: '-0.01em'
+          }}>
+            {pageTitle}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            ChainSeal Forensic Node
+          </div>
         </div>
       </div>
 
@@ -76,13 +79,16 @@ export default function Topbar({ pageTitle, walletAddress, onDisconnect }) {
           {/* Settings Dropdown */}
           {showSettings && (
             <div style={{
-              position: 'absolute', top: 'calc(100% + 10px)', right: 0,
-              width: 280, background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 'var(--r-lg)', boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-              zIndex: 1000, overflow: 'hidden'
+              position: 'absolute', top: 'calc(100% + 12px)', right: 0,
+              width: 300, background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(16px)',
+              zIndex: 1000, overflow: 'hidden',
+              animation: 'slideInDown 0.2s ease-out'
             }}>
-              <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>
-                ⚙️ Vault Settings
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Identity Panel</span>
+                <span style={{ fontSize: 10, color: 'var(--accent-teal)', fontWeight: 700 }}>VERIFIED</span>
               </div>
 
               {/* Wallet Section */}

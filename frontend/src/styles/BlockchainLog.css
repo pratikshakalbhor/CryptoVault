@@ -1,0 +1,35 @@
+.log-container h1 {
+  letter-spacing: -0.02em;
+}
+
+.log-container table {
+  border-spacing: 0;
+}
+
+.log-container tr:hover {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+.log-container th {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes pulse-teal {
+  0% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(20, 184, 166, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0); }
+}
+
+.pulse-active {
+  animation: pulse-teal 2s infinite;
+}

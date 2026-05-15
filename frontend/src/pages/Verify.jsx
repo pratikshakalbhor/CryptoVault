@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { pageVariants, cardVariants } from '../utils/animations';
-import { getTxUrl, verifyFileOnChain } from '../utils/blockchain';
+import { verifyFileOnChain } from '../utils/blockchain';
 import '../styles/Verify.css';
 
 const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api$/, '') + '/api';
@@ -14,35 +15,36 @@ const AUDIT_STEPS = [
   'Verifying blockchain seal...',
 ];
 
-export default function Verify({ walletAddress, onNotify }) {
-  // Step 1 — Vault file selection
-  const [vaultFiles,    setVaultFiles]    = useState([]);
-  const [vaultLoading,  setVaultLoading]  = useState(false);
-  const [showVaultPick, setShowVaultPick] = useState(false);
-  const [vaultFile,     setVaultFile]     = useState(null); // selected vault record
+const riskColor = (score) => {
+  if (score >= 80) return 'var(--accent-red)';
+  if (score >= 50) return 'var(--accent-orange)';
+  return 'var(--accent-teal)';
+};
 
-  // Step 2 — Desktop suspicious file
+export default function Verify({ walletAddress, onNotify }) {
+  const [vaultFiles,    setVaultFiles]    = useState([]);
+  const [showVaultPick, setShowVaultPick] = useState(false);
+  const [vaultFile,     setVaultFile]     = useState(null);
+
   const [suspiciousFile, setSuspiciousFile] = useState(null);
-  const [drag,           setDrag]           = useState(false);
   const fileRef = useRef();
 
-  // Audit state
   const [auditing,   setAuditing]   = useState(false);
   const [auditStep,  setAuditStep]  = useState(0);
   const [result,     setResult]     = useState(null);
   const [error,      setError]      = useState('');
+  const [restoring,  setRestoring]  = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewMime, setPreviewMime] = useState('');
 
   const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-  // Load vault files
   useEffect(() => {
     if (!walletAddress) return;
-    setVaultLoading(true);
     fetch(`${API}/files?wallet=${walletAddress}`)
       .then(r => r.json())
       .then(d => setVaultFiles(d.files || []))
-      .catch(console.error)
-      .finally(() => setVaultLoading(false));
+      .catch(console.error);
   }, [walletAddress]);
 
   const runForensicAudit = async () => {
@@ -63,7 +65,6 @@ export default function Verify({ walletAddress, onNotify }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Verification failed');
 
-      // Blockchain double-check
       if (data.originalHash) {
         const chain = await verifyFileOnChain(data.originalHash);
         data.chainVerified = chain.valid;
@@ -71,7 +72,6 @@ export default function Verify({ walletAddress, onNotify }) {
       }
 
       setResult(data);
-
       const isValid = data.status === 'valid' || data.isMatch;
       if (typeof onNotify === 'function') {
         onNotify(
@@ -88,641 +88,476 @@ export default function Verify({ walletAddress, onNotify }) {
 
   const handleRestore = async () => {
     if (!result?.fileId) return;
+    setRestoring(true);
     try {
       const res = await fetch(`${API}/files/${result.fileId}/download`);
       if (!res.ok) throw new Error('Download failed');
       const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = url;
-      a.download = result.filename || vaultFile?.filename || 'restored_file';
-      a.click();
-      URL.revokeObjectURL(url);
+      const mime = res.headers.get('content-type') || blob.type || 'application/octet-stream';
+      const filename = result.filename || result.fileName || vaultFile?.filename || 'restored_file';
+
+      const url = URL.createObjectURL(blob);
+      const previewable = mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('text/');
+
+      if (previewable) {
+        setPreviewUrl(url);
+        setPreviewMime(mime);
+      } else {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }
+      if (typeof onNotify === 'function') onNotify('✅ File restored from vault backup', 'success');
     } catch (err) {
       alert('Restore failed: ' + err.message);
+    } finally {
+      setRestoring(false);
     }
   };
 
   const reset = () => {
     setVaultFile(null); setSuspiciousFile(null);
     setResult(null); setError('');
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); setPreviewUrl(null); setPreviewMime(''); }
   };
 
-  const isValid = result?.status === 'valid' || result?.isMatch === true;
+  const isValid = result?.status === 'valid' || result?.status === 'VALID' || result?.isMatch === true;
+  const riskScore = isValid ? 0 : Math.min(
+    100,
+    (result?.diff?.summary?.totalChanges || 0) * 5 + (result?.comparison ? 20 : 0) + 40
+  );
 
   return (
-    <motion.div className="page-container"
-      variants={pageVariants} initial="initial" animate="animate">
+    <motion.div className="page" variants={pageVariants} initial="initial" animate="animate">
+      <div className="compact-container">
+        
+        {/* Header Section */}
+        <header style={{ textAlign: 'center', marginBottom: 40 }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: 8, 
+              padding: '6px 14px', 
+              background: 'rgba(255, 62, 62, 0.05)', 
+              border: '1px solid rgba(255, 62, 62, 0.15)', 
+              borderRadius: '20px',
+              marginBottom: 16
+            }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--accent-red)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              Forensic Audit Mode
+            </span>
+          </motion.div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.03em' }}>
+            Integrity Verification
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 8, maxWidth: '500px', margin: '8px auto 0' }}>
+            Execute deep-level forensic analysis to detect tampering and verify cryptographic authenticity.
+          </p>
+        </header>
 
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: 0 }}>
-          Forensic Audit
-        </h1>
-        <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
-          Compare your vault original against a suspicious desktop file
-        </p>
-      </div>
-
-      {/* ── Step indicator ── */}
-      {!result && (
-        <div className="section-card" style={{ padding: '14px 20px', marginBottom: 20 }}>
-          <div style={{
-            display: 'flex', alignItems: 'center',
-            gap: 8, flexWrap: 'wrap',
-          }}>
-            {[
-              { n: 1, label: 'Select Vault File',         done: !!vaultFile },
-              { n: 2, label: 'Upload Suspicious File',    done: !!suspiciousFile },
-              { n: 3, label: 'Run Forensic Audit',        done: false },
-            ].map((s, i) => (
-              <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
+        <AnimatePresence mode="wait">
+          {!auditing && !result && (
+            <motion.div key="form" variants={cardVariants} initial="initial" animate="animate" 
+              style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              
+              {error && (
+                <div className="card" style={{ 
+                  padding: '14px 18px', 
+                  background: 'rgba(255, 62, 62, 0.08)', 
+                  color: 'var(--accent-red)', 
+                  border: '1px solid rgba(255, 62, 62, 0.2)', 
+                  fontSize: 13,
+                  borderRadius: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10
                 }}>
-                  <div style={{
-                    width: 24, height: 24, borderRadius: '50%',
-                    background: s.done ? 'rgba(0,255,157,0.1)' : 'rgba(0,212,255,0.08)',
-                    border: `1px solid ${s.done ? 'var(--green)' : 'rgba(0,212,255,0.3)'}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 11, fontWeight: 700,
-                    color: s.done ? 'var(--green)' : 'var(--accent)',
-                  }}>
-                    {s.done ? '✓' : s.n}
-                  </div>
-                  <span style={{ fontSize: 12, color: s.done ? 'var(--green)' : 'var(--muted)' }}>
-                    {s.label}
-                  </span>
+                  <span>⚠️</span> {error}
                 </div>
-                {i < 2 && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                    stroke="var(--border)" strokeWidth="2" strokeLinecap="round">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
+              )}
+
+              {/* STEP 1: Select Vault File */}
+              <div className={`card glass-card ${vaultFile ? 'glow-cyan' : ''}`} 
+                style={{ 
+                  padding: '24px', 
+                  border: vaultFile ? '1px solid rgba(0, 229, 255, 0.3)' : '1px solid var(--border)',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: vaultFile ? 0 : 0 }}>
+                  <div style={{ 
+                    width: 36, height: 36, borderRadius: '10px', 
+                    background: vaultFile ? 'var(--accent-cyan)' : 'var(--bg-active)',
+                    color: vaultFile ? '#000' : 'var(--text-muted)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, fontWeight: 800, flexShrink: 0
+                  }}>
+                    {vaultFile ? '✓' : '1'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Select Vault Master</h3>
+                    {!vaultFile && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Retrieve original cryptographic record from your vault.</p>}
+                  </div>
+                  {!vaultFile ? (
+                    <button className="btn btn-p" onClick={() => setShowVaultPick(true)} style={{ background: 'var(--accent-cyan)', color: '#000' }}>Browse Vault</button>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(0, 0, 0, 0.2)', padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(0, 229, 255, 0.1)' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-cyan)' }}>{vaultFile.filename}</div>
+                      <button onClick={() => setVaultFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16 }}>✕</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* STEP 2: Upload Suspicious File */}
+              <div style={{ position: 'relative' }}>
+                <div className={`card glass-card ${suspiciousFile ? 'glow-teal' : ''}`} 
+                  style={{ 
+                    padding: '24px', 
+                    border: suspiciousFile ? '1px solid rgba(0, 255, 163, 0.3)' : '1px solid var(--border)',
+                    opacity: vaultFile ? 1 : 0.4,
+                    transition: 'opacity 0.3s ease'
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: suspiciousFile ? 0 : 20 }}>
+                    <div style={{ 
+                      width: 36, height: 36, borderRadius: '10px', 
+                      background: suspiciousFile ? 'var(--accent-teal)' : 'var(--bg-active)',
+                      color: suspiciousFile ? '#000' : 'var(--text-muted)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 14, fontWeight: 800, flexShrink: 0
+                    }}>
+                      {suspiciousFile ? '✓' : '2'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Upload Forensic Subject</h3>
+                      {!suspiciousFile && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Subject for integrity analysis.</p>}
+                    </div>
+                    {suspiciousFile && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(0, 0, 0, 0.2)', padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(0, 255, 163, 0.1)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-teal)' }}>{suspiciousFile.name}</div>
+                        <button onClick={() => setSuspiciousFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16 }}>✕</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {!suspiciousFile && (
+                    <div className="dz" 
+                      onDragOver={e => { if (!vaultFile) return; e.preventDefault(); }} 
+                      onDragLeave={() => {}} 
+                      onDrop={e => { if (!vaultFile) return; e.preventDefault(); if (e.dataTransfer.files[0]) setSuspiciousFile(e.dataTransfer.files[0]); }} 
+                      onClick={() => { if (!vaultFile) return; fileRef.current?.click(); }} 
+                      style={{ 
+                        padding: '40px 20px', 
+                        border: '1.5px dashed var(--border-light)', 
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        borderRadius: 16,
+                        cursor: vaultFile ? 'pointer' : 'not-allowed'
+                      }}>
+                      <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={e => e.target.files[0] && setSuspiciousFile(e.target.files[0])} />
+                      <div style={{ fontSize: 32, marginBottom: 12 }}>🧪</div>
+                      <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Drop Suspect Asset</h4>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Analyze local copy for tampering</p>
+                    </div>
+                  )}
+                </div>
+
+                {!vaultFile && (
+                  <div style={{ 
+                    position: 'absolute', inset: 0, 
+                    background: 'rgba(10, 14, 20, 0.4)', 
+                    backdropFilter: 'blur(4px)', 
+                    borderRadius: 16, 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 10, border: '1px solid rgba(255, 255, 255, 0.05)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-card)', padding: '10px 20px', borderRadius: '30px', border: '1px solid var(--border)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+                      <span style={{ fontSize: 16 }}>🔒</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Complete Step 1 First</span>
+                    </div>
+                  </div>
                 )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      <AnimatePresence mode="wait">
-
-        {/* ── Form (not auditing, no result) ── */}
-        {!auditing && !result && (
-          <motion.div key="form" variants={cardVariants}
-            initial="initial" animate="animate">
-
-            {error && (
-              <div style={{
-                padding: '12px 16px', borderRadius: 10, marginBottom: 16,
-                background: 'rgba(255,59,92,0.08)',
-                border: '1px solid rgba(255,59,92,0.25)',
-                fontSize: 12, color: 'var(--red)',
-              }}>
-                {error}
-              </div>
-            )}
-
-            {/* ── STEP 1 — Select Vault File ── */}
-            <div className="section-card" style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-                textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
-                Step 1 — Select Secure Vault File
-              </div>
-
-              {!vaultFile ? (
-                <motion.button
-                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  onClick={() => setShowVaultPick(true)}
-                  style={{
-                    width: '100%', padding: '14px', borderRadius: 10,
-                    border: '1.5px dashed rgba(0,212,255,0.3)',
-                    background: 'rgba(0,212,255,0.03)',
-                    color: 'var(--accent)', fontSize: 13, fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', gap: 8,
+              {/* STEP 3: Execute Audit */}
+              <div className="card glass-card" style={{ padding: '24px', opacity: vaultFile && suspiciousFile ? 1 : 0.4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+                  <div style={{ 
+                    width: 36, height: 36, borderRadius: '10px', 
+                    background: vaultFile && suspiciousFile ? 'var(--accent-purple)' : 'var(--bg-active)',
+                    color: vaultFile && suspiciousFile ? '#fff' : 'var(--text-muted)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, fontWeight: 800, flexShrink: 0
                   }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                  </svg>
-                  Select Secure Vault File
+                    3
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Execute Forensic Audit</h3>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Run cryptographic comparison engine.</p>
+                  </div>
+                </div>
+                <motion.button 
+                  whileHover={vaultFile && suspiciousFile ? { scale: 1.01, boxShadow: '0 0 25px rgba(139, 110, 253, 0.3)' } : {}}
+                  whileTap={vaultFile && suspiciousFile ? { scale: 0.99 } : {}}
+                  className="btn btn-p btn-full" 
+                  disabled={!vaultFile || !suspiciousFile} 
+                  onClick={runForensicAudit} 
+                  style={{ 
+                    height: '54px', 
+                    borderRadius: 12,
+                    fontSize: 14,
+                    fontWeight: 800,
+                    letterSpacing: '0.05em',
+                    background: vaultFile && suspiciousFile ? 'linear-gradient(135deg, var(--accent-purple), #6366f1)' : 'var(--bg-active)', 
+                    color: vaultFile && suspiciousFile ? '#fff' : 'var(--text-muted)',
+                    border: 'none'
+                  }}>
+                  INITIALIZE ANALYSIS SEQUENCE
                 </motion.button>
-              ) : (
-                <div style={{
-                  padding: '12px 16px', borderRadius: 10,
-                  background: 'rgba(0,255,157,0.06)',
-                  border: '1px solid rgba(0,255,157,0.2)',
-                  display: 'flex', alignItems: 'center', gap: 12,
-                }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 8,
-                    background: 'rgba(0,255,157,0.1)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 700, color: 'var(--green)',
-                  }}>
-                    {vaultFile.filename?.split('.').pop()?.toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {vaultFile.filename}
-                    </div>
-                    <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)',
-                      color: 'var(--green)', marginTop: 2 }}>
-                      ✓ Vault File Selected · {vaultFile.fileId}
-                    </div>
-                  </div>
-                  <button onClick={() => setVaultFile(null)}
-                    style={{ background: 'none', border: 'none',
-                      cursor: 'pointer', color: 'var(--muted)', fontSize: 16 }}>
-                    ✕
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ── STEP 2 — Upload Suspicious File ── */}
-            <div className="section-card" style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-                textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
-                Step 2 — Upload Suspicious File for Audit
               </div>
 
-              {!suspiciousFile ? (
-                <div
-                  onDragOver={e => { e.preventDefault(); setDrag(true); }}
-                  onDragLeave={() => setDrag(false)}
-                  onDrop={e => {
-                    e.preventDefault(); setDrag(false);
-                    if (e.dataTransfer.files[0])
-                      setSuspiciousFile(e.dataTransfer.files[0]);
-                  }}
-                  onClick={() => fileRef.current?.click()}
-                  style={{
-                    border: `1.5px dashed ${drag ? '#EF9F27' : 'rgba(239,159,39,0.3)'}`,
-                    borderRadius: 12, padding: '28px 20px', textAlign: 'center',
-                    cursor: 'pointer', transition: 'all 0.15s',
-                    background: drag ? 'rgba(239,159,39,0.04)' : 'transparent',
-                  }}>
-                  <input ref={fileRef} type="file" style={{ display: 'none' }}
-                    onChange={e => e.target.files[0] && setSuspiciousFile(e.target.files[0])} />
-                  <motion.div
-                    animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    style={{ marginBottom: 10 }}>
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
-                      stroke="#EF9F27" strokeWidth="1.4" strokeLinecap="round"
-                      style={{ margin: '0 auto' }}>
-                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                      <line x1="12" y1="9" x2="12" y2="13"/>
-                      <line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                  </motion.div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
-                    Drop suspicious file here
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                    Upload the possibly tampered desktop copy for comparison
+            </motion.div>
+          )}
+
+          {auditing && (
+            <motion.div key="auditing" variants={cardVariants} initial="initial" animate="animate">
+              <div className="card glass-card" style={{ padding: '48px 32px', textAlign: 'center' }}>
+                <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 32px' }}>
+                  <motion.div 
+                    animate={{ rotate: 360 }} 
+                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                    style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0, 229, 255, 0.1)', borderTopColor: 'var(--accent-cyan)' }} 
+                  />
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>
+                    🛡️
                   </div>
                 </div>
-              ) : (
-                <div style={{
-                  padding: '12px 16px', borderRadius: 10,
-                  background: 'rgba(239,159,39,0.06)',
-                  border: '1px solid rgba(239,159,39,0.25)',
-                  display: 'flex', alignItems: 'center', gap: 12,
-                }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 8,
-                    background: 'rgba(239,159,39,0.12)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 700, color: '#EF9F27',
-                  }}>
-                    {suspiciousFile.name.split('.').pop()?.toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {suspiciousFile.name}
-                    </div>
-                    <div style={{ fontSize: 10, color: '#EF9F27', marginTop: 2 }}>
-                      ⚠ Suspicious file loaded · {(suspiciousFile.size / 1024).toFixed(1)} KB
-                    </div>
-                  </div>
-                  <button onClick={() => setSuspiciousFile(null)}
-                    style={{ background: 'none', border: 'none',
-                      cursor: 'pointer', color: 'var(--muted)', fontSize: 16 }}>
-                    ✕
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ── Run Audit Button ── */}
-            <motion.button
-              whileHover={vaultFile && suspiciousFile ? { scale: 1.02 } : {}}
-              whileTap={{ scale: 0.98 }}
-              onClick={runForensicAudit}
-              disabled={!vaultFile || !suspiciousFile}
-              style={{
-                width: '100%', height: 52, border: 'none', borderRadius: 12,
-                background: vaultFile && suspiciousFile
-                  ? 'linear-gradient(135deg, #7F77DD, #378ADD)'
-                  : 'rgba(255,255,255,0.05)',
-                color: vaultFile && suspiciousFile ? '#fff' : 'var(--muted)',
-                fontSize: 14, fontWeight: 700, cursor: vaultFile && suspiciousFile ? 'pointer' : 'not-allowed',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                letterSpacing: '0.04em',
-              }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-              EXECUTE FORENSIC AUDIT
-            </motion.button>
-
-          </motion.div>
-        )}
-
-        {/* ── Auditing Progress ── */}
-        {auditing && (
-          <motion.div key="auditing" variants={cardVariants}
-            initial="initial" animate="animate">
-            <div className="section-card" style={{ padding: '32px 24px', textAlign: 'center' }}>
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-                style={{ marginBottom: 20, display: 'flex', justifyContent: 'center' }}>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
-                  stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-              </motion.div>
-              <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: 'var(--text)' }}>
-                Running Forensic Audit...
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 28 }}>
-                Please wait while we analyze the files
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360, margin: '0 auto' }}>
-                {AUDIT_STEPS.map((s, i) => {
-                  const done   = auditStep > i + 1;
-                  const active = auditStep === i + 1;
-                  return (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 14px', borderRadius: 8,
-                      background: active ? 'rgba(0,212,255,0.06)' : done ? 'rgba(0,255,157,0.04)' : 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${active ? 'rgba(0,212,255,0.25)' : done ? 'rgba(0,255,157,0.2)' : 'var(--border)'}`,
-                      opacity: active || done ? 1 : 0.35, transition: 'all 0.3s',
+                
+                <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, color: 'var(--text-primary)' }}>Forensic Engine Active</h2>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 40 }}>Comparing cryptographic DNA sequences...</p>
+                
+                <div style={{ width: '100%', maxWidth: '460px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {AUDIT_STEPS.map((s, i) => (
+                    <div key={i} style={{ 
+                      display: 'flex', alignItems: 'center', gap: 14, 
+                      padding: '14px 20px', borderRadius: 12, 
+                      background: auditStep === i + 1 ? 'rgba(0, 229, 255, 0.05)' : 'rgba(255,255,255,0.02)', 
+                      border: `1px solid ${auditStep === i + 1 ? 'rgba(0, 229, 255, 0.2)' : 'var(--border)'}`, 
+                      opacity: auditStep >= i + 1 ? 1 : 0.2,
+                      transition: 'all 0.3s ease'
                     }}>
-                      <div style={{
-                        width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: done ? 'rgba(0,255,157,0.15)' : active ? 'rgba(0,212,255,0.15)' : 'transparent',
-                        border: `1px solid ${done ? 'var(--green)' : active ? 'var(--accent)' : 'var(--border)'}`,
-                        color: done ? 'var(--green)' : active ? 'var(--accent)' : 'var(--muted)',
-                        fontSize: 10,
+                      <div style={{ 
+                        width: 22, height: 22, borderRadius: '6px', fontSize: 10, fontWeight: 800,
+                        background: auditStep > i + 1 ? 'var(--accent-teal)' : auditStep === i + 1 ? 'var(--accent-cyan)' : 'transparent', 
+                        border: `1px solid ${auditStep > i + 1 ? 'var(--accent-teal)' : auditStep === i + 1 ? 'var(--accent-cyan)' : 'var(--border)'}`,
+                        color: auditStep >= i + 1 ? '#000' : 'var(--text-muted)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
                       }}>
-                        {done ? '✓' : active ? (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                            style={{ animation: 'spin 1s linear infinite' }}>
-                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                          </svg>
-                        ) : (i + 1)}
+                        {auditStep > i + 1 ? '✓' : i + 1}
                       </div>
-                      <span style={{
-                        fontSize: 12, fontFamily: 'var(--font-mono)',
-                        color: active ? 'var(--text)' : 'var(--muted)',
-                        fontWeight: active ? 600 : 400,
-                      }}>
-                        {s}
-                      </span>
-                      {active && (
-                        <span style={{ marginLeft: 'auto', fontSize: 10,
-                          color: 'var(--accent)', fontWeight: 600 }}>
-                          PROCESSING
-                        </span>
-                      )}
-                      {done && (
-                        <span style={{ marginLeft: 'auto', fontSize: 10,
-                          color: 'var(--green)', fontWeight: 600 }}>
-                          DONE
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* ── Result ── */}
-        {result && !auditing && (
-          <motion.div key="result" variants={cardVariants}
-            initial="initial" animate="animate">
-
-            {/* Verdict */}
-            <div className="section-card"
-              style={{
-                textAlign: 'center', padding: '28px',
-                marginBottom: 16,
-                background: isValid ? 'rgba(0,255,157,0.04)' : 'rgba(255,59,92,0.04)',
-                border: `1px solid ${isValid ? 'rgba(0,255,157,0.2)' : 'rgba(255,59,92,0.2)'}`,
-              }}>
-              <motion.div
-                initial={{ scale: 0 }} animate={{ scale: 1 }}
-                transition={{ type: 'spring', stiffness: 300 }}
-                style={{ marginBottom: 16 }}>
-                {isValid ? (
-                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none"
-                    stroke="var(--green)" strokeWidth="1.4" strokeLinecap="round"
-                    style={{ filter: 'drop-shadow(0 0 12px rgba(0,255,157,0.4))' }}>
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    <polyline points="9 12 11 14 15 10"/>
-                  </svg>
-                ) : (
-                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none"
-                    stroke="var(--red)" strokeWidth="1.4" strokeLinecap="round"
-                    style={{ filter: 'drop-shadow(0 0 12px rgba(255,59,92,0.4))' }}>
-                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                    <line x1="12" y1="9" x2="12" y2="13"/>
-                    <line x1="12" y1="17" x2="12.01" y2="17"/>
-                  </svg>
-                )}
-              </motion.div>
-
-              {isValid && (
-                <div style={{
-                  display: 'inline-block', marginBottom: 12,
-                  fontSize: 10, padding: '3px 14px', borderRadius: 20,
-                  background: 'rgba(0,255,157,0.1)',
-                  border: '1px solid rgba(0,255,157,0.3)',
-                  color: 'var(--green)', fontWeight: 700, letterSpacing: '.06em',
-                }}>
-                  BLOCKCHAIN VERIFIED
-                </div>
-              )}
-
-              <h2 style={{
-                fontSize: 22, fontWeight: 800, margin: '0 0 8px',
-                color: isValid ? 'var(--green)' : 'var(--red)',
-              }}>
-                {isValid ? '✅ INTEGRITY VERIFIED' : '🚨 TAMPERING DETECTED'}
-              </h2>
-              <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
-                {isValid
-                  ? 'Desktop file matches the vault original — no modifications found.'
-                  : 'Desktop file does NOT match the vault record — file has been altered.'}
-              </p>
-            </div>
-
-            {/* Hash comparison */}
-            <div className="section-card" style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-                textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
-                Hash Comparison
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                {[
-                  { label: 'Vault Original Hash',  value: result.originalHash,  color: 'var(--green)' },
-                  { label: 'Desktop File Hash',    value: result.currentHash,   color: isValid ? 'var(--green)' : 'var(--red)' },
-                ].map((row, i) => (
-                  <div key={i} style={{
-                    padding: '12px', borderRadius: 8,
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid var(--border)',
-                  }}>
-                    <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase',
-                      letterSpacing: 1.2, marginBottom: 6 }}>
-                      {row.label}
-                    </div>
-                    <div style={{
-                      fontSize: 10, fontFamily: 'var(--font-mono)',
-                      color: row.color, wordBreak: 'break-all',
-                    }}>
-                      {row.value || '—'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Match badge */}
-              <div style={{
-                marginTop: 12, padding: '10px 16px', borderRadius: 8,
-                background: isValid ? 'rgba(0,255,157,0.06)' : 'rgba(255,59,92,0.06)',
-                border: `1px solid ${isValid ? 'rgba(0,255,157,0.2)' : 'rgba(255,59,92,0.2)'}`,
-                textAlign: 'center',
-                fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700,
-                color: isValid ? 'var(--green)' : 'var(--red)',
-              }}>
-                {isValid
-                  ? '✓ HASH MATCH — File is authentic'
-                  : '✗ HASH MISMATCH — File has been modified'}
-              </div>
-            </div>
-
-            {/* File info */}
-            {result.filename && (
-              <div className="section-card" style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-                  textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
-                  Record Details
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  {[
-                    { label: 'File Name',    value: result.filename },
-                    { label: 'File ID',      value: result.fileId },
-                    { label: 'Wallet Owner', value: result.walletAddress
-                        ? `${result.walletAddress.slice(0,10)}...` : '—' },
-                    { label: 'Blockchain',   value: result.chainVerified ? '✓ Verified' : 'DB Only' },
-                  ].map((item, i) => (
-                    <div key={i} style={{
-                      padding: '10px 12px', borderRadius: 8,
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid var(--border)',
-                    }}>
-                      <div style={{ fontSize: 9, color: 'var(--muted)',
-                        textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 3 }}>
-                        {item.label}
-                      </div>
-                      <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)',
-                        color: 'var(--text)', wordBreak: 'break-all' }}>
-                        {item.value}
-                      </div>
+                      <span style={{ fontSize: 13, fontWeight: auditStep === i + 1 ? 700 : 500, color: auditStep === i + 1 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{s}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
+            </motion.div>
+          )}
 
-            {/* TX hash */}
-            {result.txHash && result.txHash !== 'pending' && (
-              <a href={getTxUrl(result.txHash)} target="_blank" rel="noreferrer"
-                style={{
-                  display: 'block', textAlign: 'center', marginBottom: 16,
-                  fontSize: 12, color: 'var(--accent)', textDecoration: 'none',
-                }}>
-                ⛓ View Blockchain Proof on Etherscan ↗
-              </a>
-            )}
-
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: 12 }}>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                onClick={reset}
-                style={{
-                  flex: 1, height: 48, borderRadius: 10,
-                  border: '1px solid var(--border)',
-                  background: 'transparent', color: 'var(--text)',
-                  fontSize: 13, cursor: 'pointer',
-                }}>
-                Audit Another
-              </motion.button>
-
-              {!isValid && (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  onClick={handleRestore}
-                  style={{
-                    flex: 1.5, height: 48, borderRadius: 10, border: 'none',
-                    background: 'linear-gradient(135deg, var(--red), #c0392b)',
-                    color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <polyline points="23 4 23 10 17 10"/>
-                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                  </svg>
-                  Restore Original File
-                </motion.button>
-              )}
-
-              {isValid && (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  style={{
-                    flex: 1.5, height: 48, borderRadius: 10, border: 'none',
-                    background: 'linear-gradient(135deg, #7F77DD, #378ADD)',
-                    color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                  }}>
-                  Download Certificate
-                </motion.button>
-              )}
-            </div>
-
-          </motion.div>
-        )}
-
-      </AnimatePresence>
-
-      {/* ── Vault File Picker Modal ── */}
-      <AnimatePresence>
-        {showVaultPick && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={e => e.target === e.currentTarget && setShowVaultPick(false)}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              zIndex: 1000, padding: '1rem',
-            }}>
-            <motion.div
-              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }}
-              style={{
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 16, width: '100%', maxWidth: 520,
-                maxHeight: '75vh', overflow: 'hidden',
-                display: 'flex', flexDirection: 'column',
+          {result && !auditing && (
+            <motion.div key="result" initial="initial" animate="animate" 
+              style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              
+              {/* Result Summary Card */}
+              <div className="card glass-card" style={{ 
+                padding: '40px 32px', 
+                textAlign: 'center',
+                border: `1px solid ${isValid ? 'rgba(0, 255, 163, 0.2)' : 'rgba(255, 62, 62, 0.2)'}`, 
+                background: isValid ? 'rgba(0, 255, 163, 0.02)' : 'rgba(255, 62, 62, 0.02)',
+                position: 'relative',
+                overflow: 'hidden'
               }}>
-              {/* Header */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '16px 20px', borderBottom: '1px solid var(--border)',
-              }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                    Select Vault File
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                    Choose the original sealed file to compare against
-                  </div>
-                </div>
-                <button onClick={() => setShowVaultPick(false)}
-                  style={{ background: 'none', border: '1px solid var(--border)',
-                    cursor: 'pointer', color: 'var(--muted)', fontSize: 16,
-                    width: 30, height: 30, borderRadius: 8,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  ✕
-                </button>
+                <div style={{ 
+                  position: 'absolute', top: -20, right: -20, width: 100, height: 100, 
+                  background: isValid ? 'var(--accent-teal)' : 'var(--accent-red)', 
+                  opacity: 0.05, borderRadius: '50%', filter: 'blur(40px)' 
+                }} />
+
+                <div style={{ fontSize: 48, marginBottom: 20 }}>{isValid ? '🛡️' : '⚠️'}</div>
+                <h2 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 10px', color: isValid ? 'var(--accent-teal)' : 'var(--accent-red)', letterSpacing: '-0.02em' }}>
+                  {isValid ? 'INTEGRITY VERIFIED' : 'TAMPER DETECTED'}
+                </h2>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', maxWidth: '400px', margin: '0 auto' }}>
+                  {isValid 
+                    ? 'Cryptographic fingerprints match perfectly. Asset is authentic.' 
+                    : 'A mismatch has been detected in the cryptographic fingerprints.'}
+                </p>
               </div>
 
-              {/* File list */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
-                {vaultLoading ? (
-                  <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>
-                    Loading vault files...
+              {/* Analysis Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 20 }}>
+                
+                {/* Fingerprints */}
+                <div className="card glass-card" style={{ padding: '24px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 8, height: 2, background: 'var(--accent-cyan)' }}></span>
+                    Cryptographic DNA
                   </div>
-                ) : vaultFiles.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>
-                    No files in vault. Upload files first.
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Vault Master Hash</div>
+                      <div style={{ 
+                        fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)', wordBreak: 'break-all', 
+                        padding: '10px 14px', background: 'rgba(0,0,0,0.2)', borderRadius: 8, border: '1px solid rgba(0, 229, 255, 0.1)' 
+                      }}>
+                        {result.originalHash}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Forensic Subject Hash</div>
+                      <div style={{ 
+                        fontSize: 11, fontFamily: 'var(--font-mono)', color: isValid ? 'var(--accent-teal)' : 'var(--accent-red)', wordBreak: 'break-all',
+                        padding: '10px 14px', background: 'rgba(0,0,0,0.2)', borderRadius: 8, border: `1px solid ${isValid ? 'rgba(0, 255, 163, 0.1)' : 'rgba(255, 62, 62, 0.1)'}`
+                      }}>
+                        {result.currentHash}
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                {/* Intelligence Stats */}
+                <div className="card glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 8, height: 2, background: 'var(--accent-purple)' }}></span>
+                    Audit Intelligence
+                  </div>
+                  
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 20, justifyContent: 'center' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Risk Probability</div>
+                      <div style={{ fontSize: 36, fontWeight: 800, color: riskColor(riskScore), letterSpacing: '-0.02em' }}>{riskScore}%</div>
+                      <div style={{ width: '100%', height: 4, background: 'var(--bg-active)', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
+                        <motion.div initial={{ width: 0 }} animate={{ width: `${riskScore}%` }} style={{ height: '100%', background: riskColor(riskScore) }} />
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Status</span>
+                        <span style={{ color: isValid ? 'var(--accent-teal)' : 'var(--accent-red)', fontWeight: 800 }}>{result.status?.toUpperCase()}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '8px 0' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Blockchain</span>
+                        <span style={{ color: result.chainVerified ? 'var(--accent-teal)' : 'var(--accent-red)', fontWeight: 800 }}>{result.chainVerified ? 'VERIFIED' : 'UNSEALED'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Forensic Diff Section */}
+              {!isValid && result.diff?.available && (
+                <div className="card glass-card" style={{ padding: '24px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 8, height: 2, background: 'var(--accent-red)' }}></span>
+                    Forensic Byte-Diff Analysis
+                  </div>
+                  <div style={{ 
+                    maxHeight: 200, overflowY: 'auto', background: '#05070a', 
+                    padding: '20px', borderRadius: 12, fontSize: 12, fontFamily: 'var(--font-mono)',
+                    border: '1px solid rgba(255,255,255,0.05)', lineHeight: 1.6
+                  }}>
+                    {result.diff.changes?.map((ch, i) => (
+                      <div key={i} style={{ 
+                        color: ch.type === 'added' ? 'var(--accent-teal)' : ch.type === 'removed' ? 'var(--accent-red)' : 'var(--text-muted)',
+                        background: ch.type === 'added' ? 'rgba(0, 255, 163, 0.05)' : ch.type === 'removed' ? 'rgba(255, 62, 62, 0.05)' : 'transparent',
+                        padding: '0 8px', borderRadius: 4, marginBottom: 2
+                      }}>
+                        <span style={{ opacity: 0.5, marginRight: 10, width: 10, display: 'inline-block' }}>{ch.type === 'added' ? '+' : ch.type === 'removed' ? '-' : ' '}</span>
+                        {ch.after || ch.before}
+                      </div>
+                    ))}
+                    {(!result.diff.changes || result.diff.changes.length === 0) && (
+                      <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '20px' }}>Binary mismatch detected. Exact diff unavailable for this format.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Footer */}
+              <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
+                <motion.button 
+                  whileHover={{ background: 'rgba(255,255,255,0.05)' }}
+                  className="btn btn-s" onClick={reset} 
+                  style={{ flex: 1, height: 50, borderRadius: 12, fontWeight: 700 }}>
+                  New Forensic Audit
+                </motion.button>
+                {!isValid ? (
+                  <motion.button 
+                    whileHover={{ scale: 1.02, boxShadow: '0 0 20px rgba(255, 62, 62, 0.2)' }}
+                    whileTap={{ scale: 0.98 }}
+                    className="btn btn-p" onClick={handleRestore} disabled={restoring} 
+                    style={{ flex: 1.5, height: 50, borderRadius: 12, background: 'var(--accent-red)', color: '#fff', fontWeight: 800 }}>
+                    {restoring ? '🔄 EXECUTING RESTORATION...' : '🛡️ RESTORE VAULT ORIGINAL'}
+                  </motion.button>
                 ) : (
-                  vaultFiles.map(f => (
-                    <motion.div key={f.fileId}
-                      whileHover={{ background: 'rgba(255,255,255,0.04)' }}
-                      onClick={() => { setVaultFile(f); setShowVaultPick(false); }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 12,
-                        padding: '12px', borderRadius: 10, cursor: 'pointer',
-                        marginBottom: 4, border: '1px solid transparent',
-                        transition: 'all 0.15s',
-                      }}>
-                      <div style={{
-                        width: 38, height: 38, borderRadius: 8, flexShrink: 0,
-                        background: f.status === 'valid' ? 'rgba(0,255,157,0.08)' : 'rgba(255,59,92,0.08)',
-                        border: `1px solid ${f.status === 'valid' ? 'rgba(0,255,157,0.2)' : 'rgba(255,59,92,0.2)'}`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 9, fontWeight: 700,
-                        color: f.status === 'valid' ? 'var(--green)' : 'var(--red)',
-                      }}>
-                        {f.filename?.split('.').pop()?.toUpperCase()}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {f.filename}
-                        </div>
-                        <div style={{ fontSize: 10, color: 'var(--muted)',
-                          fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                          {f.fileId} · {new Date(f.uploadedAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <span style={{
-                        fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 600,
-                        background: f.status === 'valid' ? 'rgba(0,255,157,0.1)' : 'rgba(255,59,92,0.1)',
-                        color: f.status === 'valid' ? 'var(--green)' : 'var(--red)',
-                      }}>
-                        {f.status?.toUpperCase()}
-                      </span>
-                    </motion.div>
-                  ))
+                  <motion.button 
+                    whileHover={{ scale: 1.02, boxShadow: '0 0 20px rgba(0, 255, 163, 0.2)' }}
+                    whileTap={{ scale: 0.98 }}
+                    className="btn btn-teal" 
+                    style={{ flex: 1.5, height: 50, borderRadius: 12, fontWeight: 800 }}>
+                    📜 GENERATE VALIDITY REPORT
+                  </motion.button>
                 )}
               </div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
 
+        {/* Vault Picker Modal */}
+        <AnimatePresence>
+          {showVaultPick && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowVaultPick(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+              <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, width: '100%', maxWidth: 500, maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+                <div style={{ padding: 20, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0 }}>Select Record</h3>
+                  <button onClick={() => setShowVaultPick(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>✕</button>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+                  {vaultFiles.map(f => (
+                    <div key={f.fileId} className="card" onClick={() => { setVaultFile(f); setShowVaultPick(false); }} style={{ padding: 12, marginBottom: 8, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.fileName || f.filename}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{f.fileId}</div>
+                      </div>
+                      <span className="badge" style={{ background: f.status === 'valid' ? 'rgba(0,255,163,0.1)' : 'rgba(255,62,62,0.1)', color: f.status === 'valid' ? 'var(--accent-teal)' : 'var(--accent-red)' }}>{f.status?.toUpperCase()}</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Preview Modal */}
+        <AnimatePresence>
+          {previewUrl && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}>
+              <div style={{ width: '100%', maxWidth: 1000, display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+                <h3 style={{ margin: 0 }}>Restored Asset Preview</h3>
+                <button onClick={() => setPreviewUrl(null)} className="btn btn-s">Close</button>
+              </div>
+              <div style={{ width: '100%', maxWidth: 1000, flex: 1, background: '#000', borderRadius: 16, overflow: 'hidden' }}>
+                {previewMime.startsWith('image/') ? <img src={previewUrl} alt="Restored" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <iframe src={previewUrl} style={{ width: '100%', height: '100%', border: 'none' }} title="Preview" />}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+      </div>
     </motion.div>
   );
 }

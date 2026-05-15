@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Bell, CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Bell, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getAllFiles } from '../utils/api';
 
@@ -90,7 +90,7 @@ export default function NotificationDropdown({ walletAddress }) {
   }, []);
 
   const getIcon = (type) => {
-    if (type === 'critical') return <ShieldAlert size={16} style={{ color: '#ef4444' }} />;
+    if (type === 'critical') return <AlertTriangle size={16} style={{ color: '#ef4444' }} />;
     if (type === 'warning')  return <AlertTriangle size={16} style={{ color: '#f59e0b' }} />;
     return <AlertTriangle size={16} style={{ color: '#60a5fa' }} />;
   };

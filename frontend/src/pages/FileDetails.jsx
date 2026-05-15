@@ -43,7 +43,7 @@ export default function FileDetails({ walletAddress }) {
   if (error)   return <div className="page-inner"><div className="error-box"><AlertTriangle size={16} /> {error}</div><button className="btn btn-g" style={{ marginTop: 12 }} onClick={() => navigate('/my-files')}>← Back to My Files</button></div>;
   if (!file)   return null;
 
-  const name       = file.filename || file.name || 'Unknown';
+  const name       = file.fileName || file.filename || file.name || 'Unknown';
   const hash       = file.hash || file.fileHash || '';
   const txHash     = file.txHash || '';
   const cloudURL   = file.cloudURL || file.ipfsURL || file.storageURL || '';

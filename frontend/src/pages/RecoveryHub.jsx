@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import ForensicModal from '../components/ForensicModal';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_URL = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api\/?$/, '');
 const API = `${API_URL}/api`;
 
 const cardV = {
@@ -21,12 +23,14 @@ const STATUS_CONFIG = {
 };
 
 export default function RecoveryHub({ walletAddress, onNotify }) {
+  const navigate = useNavigate();
   const [files,      setFiles]      = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [recovering, setRecovering] = useState('');
   const [filter,     setFilter]     = useState('tampered');
   const [search,     setSearch]     = useState('');
   const [selected,   setSelected]   = useState(null);
+  const [forensicFile, setForensicFile] = useState(null);
 
   /* ── Fetch files ── */
   const fetchFiles = useCallback(async () => {
@@ -57,24 +61,9 @@ export default function RecoveryHub({ walletAddress, onNotify }) {
   const handleRestore = async (file) => {
     setRecovering(file.fileId);
     try {
-      const res = await fetch(
-        `${API}/files/${file.fileId}/download`
-      );
-      if (!res.ok) throw new Error('Download failed');
-
-      const blob      = await res.blob();
-      const url       = window.URL.createObjectURL(blob);
-      const a         = document.createElement('a');
-      a.href          = url;
-      a.download      = file.filename || 'restored_file';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-
-      /* update status */
-      await fetch(`${API}/files/${file.fileId}/restore`, { method: 'POST' });
-      onNotify?.('✅ File restored successfully!', 'success');
+      const { restoreFile } = await import('../utils/api');
+      await restoreFile(file.fileId, file.fileName || file.filename);
+      onNotify?.('✅ File integrity restored and downloaded!', 'success');
       fetchFiles();
     } catch (e) {
       onNotify?.('❌ Restore failed: ' + e.message, 'error');
@@ -87,6 +76,7 @@ export default function RecoveryHub({ walletAddress, onNotify }) {
   const filtered = files.filter(f => {
     const matchStatus = filter === 'all' || f.status === filter;
     const matchSearch = !search ||
+      f.fileName?.toLowerCase().includes(search.toLowerCase()) ||
       f.filename?.toLowerCase().includes(search.toLowerCase()) ||
       f.fileId?.toLowerCase().includes(search.toLowerCase());
     return matchStatus && matchSearch;
@@ -96,10 +86,8 @@ export default function RecoveryHub({ walletAddress, onNotify }) {
 
   /* ── Styles ── */
   const S = {
-    page:  { maxWidth: 900, margin: '0 auto',
-              padding: '28px 24px', color: 'var(--text, #e2e8f0)' },
-    card:  { background: 'var(--surface, #111820)',
-              border: '1px solid var(--border, #1e2d3d)',
+    card:  { background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
               borderRadius: 14, padding: '20px 22px', marginBottom: 16 },
     title: { fontSize: 22, fontWeight: 800,
               color: 'var(--text, #e2e8f0)', marginBottom: 4 },
@@ -140,7 +128,7 @@ export default function RecoveryHub({ walletAddress, onNotify }) {
   };
 
   return (
-    <div style={S.page}>
+    <div className="page-inner">
       {/* Header */}
       <div style={S.title}>🔄 Recovery Hub</div>
       <div style={S.sub}>
@@ -241,11 +229,14 @@ export default function RecoveryHub({ walletAddress, onNotify }) {
                     </span>
 
                     {/* Info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/files/${file.fileId}`);
+                    }}>
                       <div style={{ fontSize: 13, fontWeight: 700,
                         overflow: 'hidden', textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap' }}>
-                        {file.filename || 'Unknown file'}
+                        {file.fileName || file.filename || file.fileId || 'Unknown file'}
                       </div>
                       <div style={{ ...S.mono,
                         color: 'var(--muted)', marginTop: 2 }}>
@@ -268,20 +259,35 @@ export default function RecoveryHub({ walletAddress, onNotify }) {
                       {cfg.label}
                     </span>
 
-                    {/* Restore button — tampered only */}
-                    {file.status === 'tampered' && (
-                      <button
-                        style={S.btnRestore}
-                        disabled={recovering === file.fileId}
-                        onClick={e => {
-                          e.stopPropagation();
-                          handleRestore(file);
-                        }}>
-                        {recovering === file.fileId
-                          ? '⏳ Restoring...'
-                          : '🔄 Restore'}
-                      </button>
-                    )}
+                    {/* Restore button — tampered/corrupted only */}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          style={{
+                            ...S.btnRestore,
+                            background: 'rgba(0,212,255,0.1)',
+                            border: '1px solid rgba(0,212,255,0.4)',
+                            color: '#00d4ff',
+                          }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            setForensicFile(file);
+                          }}>
+                          🔬 Forensic
+                        </button>
+                        {(file.status === 'tampered' || file.status === 'corrupted' || file.status === 'under_investigation') && (
+                          <button
+                            style={S.btnRestore}
+                            disabled={recovering === file.fileId}
+                            onClick={e => {
+                              e.stopPropagation();
+                              handleRestore(file);
+                            }}>
+                            {recovering === file.fileId
+                              ? '⏳ Restoring...'
+                              : '🔄 Restore'}
+                          </button>
+                        )}
+                      </div>
 
                     {/* Expand arrow */}
                     <span style={{
@@ -369,6 +375,16 @@ export default function RecoveryHub({ walletAddress, onNotify }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Modal: */}
+      {forensicFile && (
+        <ForensicModal
+          fileId={forensicFile.fileId}
+          filename={forensicFile.fileName || forensicFile.filename}
+          onClose={() => setForensicFile(null)}
+          onRestored={() => fetchFiles()}
+        />
+      )}
     </div>
   );
 }

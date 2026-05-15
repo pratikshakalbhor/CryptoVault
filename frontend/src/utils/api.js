@@ -2,238 +2,165 @@
 // api.js — Go Backend API calls
 // Base URL: http://localhost:5000
 // ─────────────────────────────────────────
+import axios from 'axios';
 
-const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const BASE_URL = (process.env.REACT_APP_API_URL || "http://localhost:5000").replace(/\/api\/?$/, '');
 
-// ── Helper — Safe JSON parse with error handling ──
-const safeJsonParse = (text) => {
-  try {
-    return JSON.parse(text);
-  } catch (err) {
-    // If it starts with '<', it's likely HTML error
-    if (text.trim().startsWith('<')) {
-      throw new Error('Backend returned HTML (likely an error page). Check server logs.');
-    }
-    throw err;
-  }
-};
-
-// ── Helper — fetch with error handling ──
-const apiFetch = async (url, options = {}) => {
-  try {
-    const response = await fetch(`${BASE_URL}/api${url}`, {
-      headers: { "Content-Type": "application/json", ...options.headers },
-      ...options,
-    });
-
-    const text = await response.text();
-    const data = safeJsonParse(text);
-
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP Error: ${response.status}`);
-    }
-
-    return data;
-  } catch (err) {
-    console.error('API Error:', err);
-    throw new Error(err.message || "Network error — Is Go backend running?");
-  }
+// ── Binary Download Helper — URL.createObjectURL ──
+export const downloadBlob = (blob, filename) => {
+  const url = window.URL.createObjectURL(new Blob([blob]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  
+  // Cleanup
+  link.parentNode.removeChild(link);
+  window.URL.revokeObjectURL(url);
 };
 
 // ─────────────────────────────────────────
 // 1. UPLOAD FILE
-// POST /api/upload
 // ─────────────────────────────────────────
-export const uploadFile = async (
-  file,
-  wallet,
-  expiry,
-  parentId,
-  note,
-  fileHash
-) => {
+export const uploadFile = async (file, wallet, expiry, parentId, note, fileHash) => {
   const formData = new FormData();
-
   formData.append("file", file);
   formData.append("wallet", (wallet || "").toLowerCase());
-
   if (expiry) formData.append("expiryDate", expiry);
   if (parentId) formData.append("parentFileId", parentId);
   if (note) formData.append("versionNote", note);
   if (fileHash) formData.append("fileHash", fileHash);
 
-  try {
-    const res = await fetch(`${BASE_URL}/api/upload`, {
-      method: "POST",
-      body: formData,
-    });
-
-    const text = await res.text();
-    const data = safeJsonParse(text);
-
-    if (!res.ok) {
-      throw new Error(data.error || `Upload failed: ${res.status}`);
-    }
-
-    return data;
-  } catch (err) {
-    console.error('Upload error:', err);
-    throw new Error(err.message || "Upload failed");
-  }
+  const res = await axios.post(`${BASE_URL}/api/upload`, formData);
+  return res.data;
 };
 
 // ─────────────────────────────────────────
 // 2. VERIFY FILE
-// POST /api/verify
 // ─────────────────────────────────────────
-export const verifyFile = async (file, fileId) => {
+export const verifyFile = async (file, fileId, wallet) => {
   const formData = new FormData();
   formData.append("file", file);
   if (fileId) formData.append("fileId", fileId);
+  if (wallet) formData.append("wallet", wallet.toLowerCase());
 
-  try {
-    const response = await fetch(`${BASE_URL}/api/verify`, {
-      method: "POST",
-      body: formData,
-    });
-
-    const text = await response.text();
-    const data = safeJsonParse(text);
-
-    if (!response.ok) {
-      throw new Error(data.error || `Verify failed: ${response.status}`);
-    }
-
-    return data;
-  } catch (err) {
-    console.error('Verify error:', err);
-    throw new Error(err.message || "Verify failed");
-  }
+  const res = await axios.post(`${BASE_URL}/api/verify`, formData);
+  return res.data;
 };
 
 // ─────────────────────────────────────────
 // 3. GET ALL FILES
-// GET /api/files?wallet=0x...
 // ─────────────────────────────────────────
 export const getAllFiles = async (walletAddress, isBlockchain = false) => {
-  if (!walletAddress) return { data: [], count: 0 };
+  if (!walletAddress) return { files: [], count: 0 };
   const wallet = walletAddress.toLowerCase();
   let query = `?wallet=${wallet}`;
-  if (isBlockchain) {
-    query += "&blockchain=true";
-  }
-  return apiFetch(`/files${query}`);
+  if (isBlockchain) query += "&blockchain=true";
+  
+  const res = await axios.get(`${BASE_URL}/api/files${query}`);
+  return res.data;
 };
 
-// ─────────────────────────────────────────
-// 4. GET SINGLE FILE
-// GET /api/files/:id
-// ─────────────────────────────────────────
 export const getFileById = async (fileId) => {
-  return apiFetch(`/files/${fileId}`);
+  const res = await axios.get(`${BASE_URL}/api/files/${fileId}`);
+  return res.data;
 };
 
-// ─────────────────────────────────────────
-// 4.5 GET FILE VERSIONS
-// GET /api/files/:id/versions
-// ─────────────────────────────────────────
 export const getFileVersions = async (fileId) => {
-  return apiFetch(`/files/${fileId}/versions`);
+  const res = await axios.get(`${BASE_URL}/api/files/${fileId}/versions`);
+  return res.data;
 };
 
 // ─────────────────────────────────────────
-// 5. REVOKE FILE
-// PUT /api/files/:id/revoke
+// 4. ARCHIVE & RESTORE
 // ─────────────────────────────────────────
-export const revokeFile = async (fileId) => {
-  return apiFetch(`/files/${fileId}/revoke`, { method: "PUT" });
+export const archiveFile = async (fileId, wallet) => {
+  const res = await axios.put(`${BASE_URL}/api/files/${fileId}/archive`, { wallet: wallet?.toLowerCase() });
+  return res.data;
 };
 
-// ─────────────────────────────────────────
-// 5.5 DOWNLOAD CERTIFICATE (PDF)
-// GET /api/files/:id/certificate
-// ─────────────────────────────────────────
-export const downloadCertificate = async (fileId) => {
-  try {
-    const response = await fetch(`${BASE_URL}/api/files/${fileId}/certificate`);
-    if (!response.ok) throw new Error("Certificate generation failed");
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Certificate_${fileId}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    throw new Error(err.message || "Failed to download certificate");
-  }
-};
-
-// ─────────────────────────────────────────
-// 5.6 PUBLIC VERIFY
-// GET /api/public/verify/:publicId
-// ─────────────────────────────────────────
-export const publicVerifyFile = async (publicId) => {
-  return apiFetch(`/public/verify/${publicId}`);
-};
-
-// ─────────────────────────────────────────
-// Access Control API
-export const updateVisibility = async (fileId, visibility, sharedWith = []) => {
-  return apiFetch(`/files/${fileId}/visibility`, {
-    method: "PUT",
-    body: JSON.stringify({ visibility, sharedWith }),
-  });
-};
-
-export const updateTxHash = async (fileId, txHash) => {
-  return apiFetch(`/files/${fileId}/txhash`, {
-    method: "PUT",
-    body: JSON.stringify({ txHash }),
-  });
-};
-
-// ─────────────────────────────────────────
-// Trash & Restore Features
-// ─────────────────────────────────────────
-export const trashFile = async (fileId) => {
-  return apiFetch(`/files/${fileId}`, { method: "DELETE" });
-};
-
-export const restoreFile = async (fileId) => {
-  return apiFetch(`/restore/${fileId}`, { method: "POST" });
-};
-
-export const deleteFilePermanently = async (fileId) => {
-  return apiFetch(`/files/${fileId}/permanent`, { method: "DELETE" });
-};
-
-export const getTrashFiles = async (walletAddress) => {
+export const getArchivedFiles = async (walletAddress) => {
   const wallet = (walletAddress || "").toLowerCase();
   const query = wallet ? `?wallet=${wallet}` : "";
-  return apiFetch(`/files/trash/all${query}`);
+  const res = await axios.get(`${BASE_URL}/api/files/archive/all${query}`);
+  return res.data;
+};
+
+export const restoreFromArchive = async (fileId, wallet) => {
+  const res = await axios.post(`${BASE_URL}/api/files/${fileId}/restore-archive`, { wallet: wallet?.toLowerCase() });
+  return res.data;
+};
+
+// ─────────────────────────────────────────
+// 5. RESTORE FILE (Proper Binary Download — no corruption)
+// ─────────────────────────────────────────
+export const restoreFile = async (fileId, filename = 'restored_file', wallet) => {
+  try {
+    // Use DownloadOriginal which serves raw binary bytes from local backup or IPFS
+    const response = await axios.get(`${BASE_URL}/api/files/${fileId}/download`, {
+      responseType: 'blob',
+      params: { wallet: wallet?.toLowerCase() },
+    });
+
+    // Extract real filename from Content-Disposition if available
+    const disposition = response.headers['content-disposition'] || '';
+    const match = disposition.match(/filename="?([^";\n]+)"?/i);
+    const realFilename = match ? match[1] : filename;
+
+    // Preserve MIME type from response header
+    const mimeType = response.headers['content-type'] || 'application/octet-stream';
+
+    // Create Blob with the correct MIME type (preserves binary integrity)
+    const blob = new Blob([response.data], { type: mimeType });
+    downloadBlob(blob, realFilename);
+
+    return { success: true, message: 'File restored and downloaded', filename: realFilename };
+  } catch (err) {
+    console.error('Restore error:', err);
+    // If server returned a JSON error inside a blob, parse it
+    if (err.response?.data instanceof Blob) {
+      try {
+        const text = await err.response.data.text();
+        const parsed = JSON.parse(text);
+        throw new Error(parsed.error || parsed.message || 'Restoration failed');
+      } catch (parseErr) {
+        // not JSON
+      }
+    }
+    throw new Error(err.response?.data?.error || err.message || 'Restoration failed');
+  }
 };
 
 // ─────────────────────────────────────────
 // 6. GET STATS
-// GET /api/stats
 // ─────────────────────────────────────────
 export const getStats = async (walletAddress) => {
   const wallet = (walletAddress || "").toLowerCase();
   const query = wallet ? `?wallet=${wallet}` : "";
-  return apiFetch(`/stats${query}`);
+  const res = await axios.get(`${BASE_URL}/api/stats${query}`);
+  return res.data;
 };
 
 // ─────────────────────────────────────────
-// 7. HEALTH CHECK
-// GET /
+// 7. EXTRAS
 // ─────────────────────────────────────────
+export const downloadCertificate = async (fileId) => {
+  const res = await axios.get(`${BASE_URL}/api/files/${fileId}/certificate`, { responseType: 'blob' });
+  downloadBlob(res.data, `Certificate_${fileId}.pdf`);
+};
+
+export const getAuditLogs = async (walletAddress) => {
+  const wallet = (walletAddress || "").toLowerCase();
+  const query = wallet ? `?wallet=${wallet}` : "";
+  const res = await axios.get(`${BASE_URL}/api/audit-logs${query}`);
+  return res.data;
+};
+
 export const healthCheck = async () => {
   try {
-    const response = await fetch(`${BASE_URL}/`);
-    return response.ok;
+    const res = await axios.get(`${BASE_URL}/`);
+    return res.status === 200;
   } catch {
     return false;
   }

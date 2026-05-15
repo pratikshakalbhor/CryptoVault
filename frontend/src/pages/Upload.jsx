@@ -29,7 +29,27 @@ export default function Upload({ walletAddress, onNavigate }) {
   const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
   const handleUpload = async () => {
-    if (!file || !walletAddress) return;
+    if (!file) return;
+
+    // ── Wallet Check ──
+    if (!walletAddress) {
+      setError('Connect your MetaMask wallet first.');
+      return;
+    }
+
+    // ── Pre-flight: Ensure MetaMask is unlocked & connected ──
+    if (window.ethereum) {
+      try {
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+      } catch (e) {
+        setError('MetaMask connection rejected. Please unlock MetaMask and try again.');
+        return;
+      }
+    } else {
+      setError('MetaMask not found! Please install MetaMask browser extension.');
+      return;
+    }
+
     setUploading(true); setError(''); setResult(null);
 
     try {
@@ -67,9 +87,9 @@ export default function Upload({ walletAddress, onNavigate }) {
         return;
       }
 
-      // Step 4 — MetaMask popup
-      step(3); await delay(300);
-      console.log('🦊 Triggering MetaMask...');
+      // Step 4 — MetaMask popup (always for new files)
+      step(3); await delay(200);
+      console.log('🦊 Triggering MetaMask for new file hash:', fileHash?.slice(0, 16) + '...');
 
       let txHash     = 'pending';
       let blockNumber = 0;
@@ -81,17 +101,31 @@ export default function Upload({ walletAddress, onNavigate }) {
         console.log('✅ Blockchain confirmed! TX:', txHash);
       } catch (bcErr) {
         console.warn('⚠️ Blockchain seal failed:', bcErr.message);
-        // Don't block — file saved, blockchain optional
+        // User rejected or network error — file still saved, blockchain is optional
+        // But we show a clear warning in the result
+        if (bcErr.message?.includes('user rejected') || bcErr.code === 4001) {
+          setError('⚠️ MetaMask transaction was rejected. File saved to vault but NOT sealed on blockchain.');
+        }
       }
 
-      // Step 5 — Save txHash to backend
+      // Step 5 — Save txHash to backend (only if confirmed)
       step(4);
-      if (txHash !== 'pending') {
-        await fetch(`${API}/files/${fileId}/tx`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ txHash, blockNumber }),
-        }).catch(console.warn);
+      if (txHash && txHash !== 'pending') {
+        try {
+          const patchRes = await fetch(`${API}/files/${fileId}/tx`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ txHash, blockNumber }),
+          });
+          if (patchRes.ok) {
+            console.log('✅ txHash saved to backend:', txHash);
+          } else {
+            const patchData = await patchRes.json().catch(() => ({}));
+            console.warn('⚠️ txHash save failed:', patchData);
+          }
+        } catch (patchErr) {
+          console.warn('⚠️ txHash PATCH error:', patchErr.message);
+        }
       }
 
       // Step 6 — Done
@@ -114,313 +148,405 @@ export default function Upload({ walletAddress, onNavigate }) {
   };
 
   return (
-    <motion.div className="page-container"
+    <motion.div className="page"
       variants={pageVariants} initial="initial" animate="animate">
 
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', margin: 0 }}>
-          Upload & Seal
-        </h1>
-        <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
-          Files are encrypted, stored on IPFS, and hash sealed on Ethereum
-        </p>
-      </div>
-
-      <AnimatePresence mode="wait">
-
-        {/* ── Drop Zone ── */}
-        {!file && !uploading && !result && (
-          <motion.div key="drop" variants={cardVariants}
-            initial="initial" animate="animate" exit={{ opacity: 0 }}>
-            <div className="section-card"
-              onDragOver={e => { e.preventDefault(); setDrag(true); }}
-              onDragLeave={() => setDrag(false)}
-              onDrop={e => {
-                e.preventDefault(); setDrag(false);
-                if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
-              }}
-              onClick={() => fileRef.current?.click()}
-              style={{
-                border: `2px dashed ${drag ? 'var(--accent)' : 'rgba(255,255,255,0.12)'}`,
-                borderRadius: 16, padding: '48px 24px', textAlign: 'center',
-                cursor: 'pointer', transition: 'all 0.2s',
-                background: drag ? 'rgba(0,212,255,0.03)' : 'transparent',
-              }}>
-              <input ref={fileRef} type="file" style={{ display: 'none' }}
-                onChange={e => e.target.files[0] && setFile(e.target.files[0])} />
-              <motion.div
-                animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity }}
-                style={{ fontSize: 48, marginBottom: 16 }}>
-                📂
-              </motion.div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-                Drop file here or click to browse
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                Any file type · Sealed on Ethereum Sepolia
-              </div>
-            </div>
-
-            {/* 3-Layer info */}
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: 12, marginTop: 16,
+      <div className="compact-container">
+        {/* Header Section */}
+        <header style={{ textAlign: 'center', marginBottom: 32 }}>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: 8, 
+              padding: '6px 12px', 
+              background: 'rgba(0, 229, 255, 0.05)', 
+              border: '1px solid rgba(0, 229, 255, 0.15)', 
+              borderRadius: '20px',
+              marginBottom: 16
             }}>
-              {[
-                { icon: '🔐', title: 'AES-256', desc: 'File encrypted before upload' },
-                { icon: '#', title: 'SHA-256', desc: 'Cryptographic fingerprint' },
-                { icon: '⛓️', title: 'Blockchain', desc: 'Immutable Sepolia proof' },
-              ].map((item, i) => (
-                <div key={i} className="section-card"
-                  style={{ padding: '14px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 24, marginBottom: 6 }}>{item.icon}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>
-                    {item.title}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-                    {item.desc}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-cyan)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Secure Vault Protocol v2.4
+            </span>
           </motion.div>
-        )}
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-0.03em' }}>
+            Vault Registration
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 8, maxWidth: '500px', margin: '8px auto 0' }}>
+            Establish immutable blockchain proof for your digital assets using military-grade encryption and SHA-256 fingerprinting.
+          </p>
+        </header>
 
-        {/* ── File selected ── */}
-        {file && !uploading && !result && (
-          <motion.div key="selected" variants={cardVariants}
-            initial="initial" animate="animate">
-            {error && (
-              <div style={{
-                padding: '12px 16px', borderRadius: 10, marginBottom: 16,
-                background: 'rgba(255,59,92,0.08)',
-                border: '1px solid rgba(255,59,92,0.25)',
-                fontSize: 12, color: 'var(--red)',
-              }}>
-                {error}
-              </div>
-            )}
+        <AnimatePresence mode="wait">
 
-            <div className="section-card" style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: 10,
-                  background: 'rgba(0,212,255,0.08)',
-                  border: '1px solid rgba(0,212,255,0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 10, fontWeight: 700, color: 'var(--accent)',
+          {/* ── Drop Zone ── */}
+          {!file && !uploading && !result && (
+            <motion.div key="drop" variants={cardVariants}
+              initial="initial" animate="animate" exit={{ opacity: 0 }}>
+              
+              {/* Compact Upload Card */}
+              <div className="card glass-card glow-cyan dz"
+                onDragOver={e => { e.preventDefault(); setDrag(true); }}
+                onDragLeave={() => setDrag(false)}
+                onDrop={e => {
+                  e.preventDefault(); setDrag(false);
+                  if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+                }}
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  maxWidth: '560px',
+                  margin: '0 auto',
+                  padding: '60px 40px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  border: drag ? '1.5px dashed var(--accent-cyan)' : '1.5px dashed var(--border-light)',
+                  background: drag ? 'rgba(0, 229, 255, 0.04)' : 'var(--glass-bg)',
                 }}>
-                  {file.name.split('.').pop()?.toUpperCase()}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {file.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                    {(file.size / 1024).toFixed(1)} KB · {file.type || 'unknown'}
-                  </div>
-                </div>
-                <button onClick={reset} style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'var(--muted)', fontSize: 16, padding: '4px 8px',
-                }}>✕</button>
-              </div>
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-              onClick={handleUpload}
-              style={{
-                width: '100%', height: 52, border: 'none', borderRadius: 12,
-                background: 'var(--accent)', color: '#000',
-                fontSize: 15, fontWeight: 700, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-              <span>🔒</span> Upload & Seal on Blockchain
-            </motion.button>
-          </motion.div>
-        )}
-
-        {/* ── Upload Progress ── */}
-        {uploading && (
-          <motion.div key="progress" variants={fadeIn}
-            initial="initial" animate="animate">
-            <div className="section-card" style={{ padding: '28px' }}>
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6,
-                color: 'var(--text)' }}>
-                Processing your file...
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 20 }}>
-                {file?.name}
-              </div>
-
-              {/* Progress bar */}
-              <div style={{
-                height: 6, background: 'rgba(255,255,255,0.06)',
-                borderRadius: 20, overflow: 'hidden', marginBottom: 8,
-              }}>
+                <input ref={fileRef} type="file" style={{ display: 'none' }}
+                  onChange={e => e.target.files[0] && setFile(e.target.files[0])} />
+                
                 <motion.div
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.5, ease: 'easeOut' }}
-                  style={{
-                    height: '100%', background: 'var(--accent)',
-                    borderRadius: 20,
-                  }} />
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)',
-                textAlign: 'right', marginBottom: 24 }}>
-                {progress}% complete
-              </div>
-
-              {/* Steps */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {STEPS.map((s, i) => {
-                  const done   = stepIdx > i;
-                  const active = stepIdx === i;
-                  return (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      opacity: active || done ? 1 : 0.3, transition: 'opacity 0.3s',
-                    }}>
-                      <div style={{
-                        width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: done ? 'rgba(0,255,157,0.15)'
-                          : active ? 'rgba(0,212,255,0.15)' : 'transparent',
-                        border: `1px solid ${done ? 'var(--green)'
-                          : active ? 'var(--accent)' : 'var(--border)'}`,
-                        color: done ? 'var(--green)' : active ? 'var(--accent)' : 'var(--muted)',
-                        fontSize: 11,
-                      }}>
-                        {done ? '✓' : active ? (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                            style={{ animation: 'spin 1s linear infinite' }}>
-                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                          </svg>
-                        ) : (i + 1)}
-                      </div>
-                      <span style={{
-                        fontSize: 13,
-                        color: active ? 'var(--text)' : 'var(--muted)',
-                        fontWeight: active ? 600 : 400,
-                      }}>
-                        {s.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* ── Success ── */}
-        {result && !uploading && (
-          <motion.div key="success" variants={cardVariants}
-            initial="initial" animate="animate">
-            <div className="section-card"
-              style={{
-                background: 'rgba(0,255,157,0.04)',
-                border: '1px solid rgba(0,255,157,0.2)',
-                padding: '28px',
-              }}>
-
-              <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                <motion.div
-                  initial={{ scale: 0 }} animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 300 }}
-                  style={{ fontSize: 48, marginBottom: 12 }}>
-                  ✅
+                  animate={{ y: [0, -6, 0] }} 
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  style={{ 
+                    width: 64, 
+                    height: 64, 
+                    borderRadius: '16px', 
+                    background: 'linear-gradient(135deg, rgba(0, 229, 255, 0.1), rgba(0, 229, 255, 0.05))',
+                    border: '1px solid rgba(0, 229, 255, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: 20,
+                    color: 'var(--accent-cyan)'
+                  }}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
                 </motion.div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)' }}>
-                  {result.duplicate
-                    ? 'Existing Blockchain Proof Reused!'
-                    : 'File Registered Successfully!'}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-                  {result.duplicate
-                    ? 'Same file hash found — existing TX proof linked.'
-                    : 'Encrypted, stored on IPFS, and sealed on Sepolia.'}
-                </div>
+                
+                <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Initialize Security Seal</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>Drag and drop forensic asset or click to browse</p>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Maximum payload: 50MB · Encrypted at edge</span>
               </div>
 
-              {/* Details */}
+              {/* Security Features Row */}
               <div style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 10, padding: '16px',
-                marginBottom: 20,
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 16, 
+                marginTop: 32,
               }}>
-                <div style={{ fontSize: 13, fontWeight: 700,
-                  color: 'var(--text)', marginBottom: 12 }}>
-                  Registration Details
-                </div>
                 {[
-                  { label: 'SHA-256 HASH',    value: result.fileHash, color: 'var(--accent)' },
-                  { label: 'BLOCKCHAIN TX',   value: result.txHash,   color: '#a78bfa' },
-                  { label: 'FILE ID',         value: result.fileId,   color: 'var(--muted)' },
-                ].map((row, i) => (
-                  <div key={i} style={{ marginBottom: i < 2 ? 10 : 0 }}>
-                    <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)',
-                      color: 'var(--muted)', letterSpacing: 1.5,
-                      textTransform: 'uppercase', marginBottom: 3 }}>
-                      {row.label}
-                    </div>
-                    <div style={{
-                      fontSize: 11, fontFamily: 'var(--font-mono)',
-                      color: row.color, wordBreak: 'break-all',
+                  { icon: '🔐', title: 'AES-256', desc: 'Enterprise Grade Encryption', color: 'var(--accent-purple)' },
+                  { icon: '🆔', title: 'SHA-256', desc: 'Cryptographic Fingerprinting', color: 'var(--accent-cyan)' },
+                  { icon: '⛓️', title: 'ETH SEAL', desc: 'Immutable Blockchain Proof', color: 'var(--accent-teal)' },
+                ].map((item, i) => (
+                  <motion.div 
+                    key={i} 
+                    whileHover={{ y: -4 }}
+                    className="card glass-card"
+                    style={{ 
+                      padding: '24px 16px', 
+                      textAlign: 'center',
+                      borderTop: `2px solid ${item.color}`
                     }}>
-                      {row.value === 'pending'
-                        ? <span style={{ color: '#EF9F27' }}>⏳ Pending confirmation...</span>
-                        : row.value}
+                    <div style={{ fontSize: 24, marginBottom: 12 }}>{item.icon}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      {item.title}
                     </div>
-                  </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.4 }}>
+                      {item.desc}
+                    </div>
+                  </motion.div>
                 ))}
               </div>
+            </motion.div>
+          )}
 
-              {/* TX Etherscan link */}
-              {result.txHash && result.txHash !== 'pending' && result.txHash !== 'existing' && (
-                <a href={getTxUrl(result.txHash)} target="_blank" rel="noreferrer"
-                  style={{
-                    display: 'block', textAlign: 'center', marginBottom: 16,
-                    fontSize: 12, color: 'var(--accent)', textDecoration: 'none',
-                  }}>
-                  View transaction on Etherscan ↗
-                </a>
+          {/* ── File selected ── */}
+          {file && !uploading && !result && (
+            <motion.div key="selected" variants={cardVariants}
+              initial="initial" animate="animate"
+              style={{ maxWidth: '560px', margin: '0 auto' }}>
+              
+              {error && (
+                <div style={{
+                  padding: '12px 16px', borderRadius: 12, marginBottom: 20,
+                  background: 'rgba(255, 62, 62, 0.08)',
+                  border: '1px solid rgba(255, 62, 62, 0.2)',
+                  fontSize: 13, color: 'var(--accent-red)',
+                  display: 'flex', alignItems: 'center', gap: 10
+                }}>
+                  <span>⚠️</span> {error}
+                </div>
               )}
 
-              {/* Buttons */}
-              <div style={{ display: 'flex', gap: 12 }}>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  onClick={reset}
-                  style={{
-                    flex: 1, height: 44, borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    background: 'transparent', color: 'var(--text)',
-                    fontSize: 13, cursor: 'pointer',
+              <div className="card glass-card" style={{ marginBottom: 20, padding: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{
+                    width: 52, height: 52, borderRadius: 12,
+                    background: 'rgba(0, 229, 255, 0.08)',
+                    border: '1px solid rgba(0, 229, 255, 0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: 800, color: 'var(--accent-cyan)',
                   }}>
-                  Upload Another
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  onClick={() => onNavigate('files')}
-                  style={{
-                    flex: 1, height: 44, borderRadius: 10,
-                    border: 'none', background: 'var(--accent)',
-                    color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                  }}>
-                  View My Files →
-                </motion.button>
+                    {file.name.split('.').pop()?.toUpperCase() || 'FILE'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {file.name}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+                      {(file.size / 1024).toFixed(1)} KB · {file.type || 'Binary Data'}
+                    </div>
+                  </div>
+                  <motion.button 
+                    whileHover={{ scale: 1.1, color: 'var(--accent-red)' }}
+                    onClick={reset} 
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--text-muted)', fontSize: 18, padding: '8px',
+                    }}>✕</motion.button>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
 
-      </AnimatePresence>
+              <motion.button
+                whileHover={{ scale: 1.02, boxShadow: '0 0 20px rgba(0, 229, 255, 0.3)' }} 
+                whileTap={{ scale: 0.98 }}
+                onClick={handleUpload}
+                className="btn btn-p btn-full"
+                style={{
+                  height: 56, borderRadius: 14,
+                  background: 'var(--accent-cyan)', color: '#000',
+                  fontSize: 15, fontWeight: 800, 
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+                  boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)'
+                }}>
+                <span>🛡️</span> SECURE ON BLOCKCHAIN
+              </motion.button>
+              
+              <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', marginTop: 16 }}>
+                By proceeding, you are creating a permanent cryptographic record on Ethereum Sepolia.
+              </p>
+            </motion.div>
+          )}
+
+          {/* ── Upload Progress ── */}
+          {uploading && (
+            <motion.div key="progress" variants={fadeIn}
+              initial="initial" animate="animate"
+              style={{ maxWidth: '560px', margin: '0 auto' }}>
+              <div className="card glass-card" style={{ padding: '32px' }}>
+                <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>
+                    Securing Digital Asset
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    {file?.name}
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div style={{
+                  height: 8, background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: 10, overflow: 'hidden', marginBottom: 12,
+                  border: '1px solid rgba(255, 255, 255, 0.05)'
+                }}>
+                  <motion.div
+                    animate={{ width: `${progress}%` }}
+                    transition={{ duration: 0.5, ease: 'easeOut' }}
+                    style={{
+                      height: '100%', 
+                      background: 'linear-gradient(90deg, var(--accent-cyan), var(--accent-purple))',
+                      borderRadius: 10,
+                    }} />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--accent-cyan)', fontWeight: 700,
+                  textAlign: 'right', marginBottom: 32, fontFamily: 'var(--font-mono)' }}>
+                  {progress}%
+                </div>
+
+                {/* Steps */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {STEPS.map((s, i) => {
+                    const done   = stepIdx > i;
+                    const active = stepIdx === i;
+                    return (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: 14,
+                        opacity: active || done ? 1 : 0.25, 
+                        transition: 'all 0.3s ease',
+                        transform: active ? 'translateX(4px)' : 'none'
+                      }}>
+                        <div style={{
+                          width: 26, height: 26, borderRadius: '8px', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: done ? 'rgba(0, 255, 163, 0.1)'
+                            : active ? 'rgba(0, 229, 255, 0.1)' : 'transparent',
+                          border: `1px solid ${done ? 'rgba(0, 255, 163, 0.3)'
+                            : active ? 'rgba(0, 229, 255, 0.3)' : 'var(--border)'}`,
+                          color: done ? 'var(--accent-teal)' : active ? 'var(--accent-cyan)' : 'var(--text-muted)',
+                          fontSize: 12,
+                        }}>
+                          {done ? '✓' : active ? (
+                            <motion.div 
+                              animate={{ rotate: 360 }} 
+                              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                              </svg>
+                            </motion.div>
+                          ) : (i + 1)}
+                        </div>
+                        <span style={{
+                          fontSize: 13,
+                          color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          fontWeight: active ? 700 : 500,
+                          letterSpacing: active ? '0.01em' : '0'
+                        }}>
+                          {s.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── Success ── */}
+          {result && !uploading && (
+            <motion.div key="success" variants={cardVariants}
+              initial="initial" animate="animate"
+              style={{ maxWidth: '600px', margin: '0 auto' }}>
+              <div className="card glass-card"
+                style={{
+                  border: '1px solid rgba(0, 255, 163, 0.2)',
+                  background: 'rgba(0, 255, 163, 0.02)',
+                  padding: '40px 32px',
+                }}>
+
+                <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                  <motion.div
+                    initial={{ scale: 0 }} animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                    style={{ 
+                      width: 80, 
+                      height: 80, 
+                      borderRadius: '50%', 
+                      background: 'rgba(0, 255, 163, 0.1)',
+                      border: '1px solid rgba(0, 255, 163, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 40,
+                      margin: '0 auto 20px',
+                      boxShadow: '0 0 30px rgba(0, 255, 163, 0.15)'
+                    }}>
+                    ✓
+                  </motion.div>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent-teal)', marginBottom: 8 }}>
+                    {result.duplicate
+                      ? 'Blockchain Proof Verified'
+                      : 'Security Protocol Complete'}
+                  </h2>
+                  <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
+                    {result.duplicate
+                      ? 'Asset already registered. Existing proof retrieved.'
+                      : 'Encrypted, stored on IPFS, and sealed on Ethereum.'}
+                  </p>
+                </div>
+
+                {/* Details Card */}
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 14, padding: '24px',
+                  marginBottom: 32,
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, 
+                    color: 'var(--text-primary)', marginBottom: 20,
+                    textTransform: 'uppercase', letterSpacing: '0.1em',
+                    display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-teal)' }}></span>
+                    Forensic Certificate
+                  </div>
+                  
+                  {[
+                    { label: 'SHA-256 Fingerprint', value: result.fileHash, color: 'var(--accent-cyan)' },
+                    { label: 'Blockchain Transaction', value: result.txHash, color: 'var(--accent-purple)' },
+                    { label: 'Asset Identifier', value: result.fileId, color: 'var(--text-muted)' },
+                  ].map((row, i) => (
+                    <div key={i} style={{ marginBottom: i < 2 ? 16 : 0 }}>
+                      <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-muted)', letterSpacing: 1,
+                        textTransform: 'uppercase', marginBottom: 6 }}>
+                        {row.label}
+                      </div>
+                      <div style={{
+                        fontSize: 11, fontFamily: 'var(--font-mono)',
+                        color: row.color, wordBreak: 'break-all',
+                        padding: '8px 12px', background: 'rgba(255, 255, 255, 0.03)',
+                        borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.05)'
+                      }}>
+                        {row.value === 'pending'
+                          ? <span style={{ color: 'var(--accent-orange)' }}>⏳ Awaiting block confirmation...</span>
+                          : row.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Explorer Link */}
+                {result.txHash && result.txHash !== 'pending' && result.txHash !== 'existing' && (
+                  <motion.a 
+                    whileHover={{ color: 'var(--text-primary)' }}
+                    href={getTxUrl(result.txHash)} target="_blank" rel="noreferrer"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      marginBottom: 32, fontSize: 12, color: 'var(--accent-teal)', textDecoration: 'none',
+                      fontWeight: 600
+                    }}>
+                    Verify on Etherscan ↗
+                  </motion.a>
+                )}
+
+                {/* Footer Buttons */}
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <motion.button
+                    whileHover={{ background: 'rgba(255, 255, 255, 0.05)' }}
+                    onClick={reset}
+                    className="btn btn-s"
+                    style={{
+                      flex: 1, height: 48, borderRadius: 12,
+                      fontSize: 13, fontWeight: 700
+                    }}>
+                    New Registration
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    onClick={() => onNavigate('files')}
+                    className="btn btn-p"
+                    style={{
+                      flex: 1.2, height: 48, borderRadius: 12,
+                      background: 'var(--accent-teal)', color: '#000',
+                      fontSize: 13, fontWeight: 800
+                    }}>
+                    View Forensic Vault →
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+        </AnimatePresence>
+      </div>
     </motion.div>
   );
 }

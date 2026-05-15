@@ -1,24 +1,9 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAllFiles } from '../utils/api';
 import {
   Activity, AlertTriangle, CheckCircle, ExternalLink,
-  FileText, RefreshCw, Search, ShieldCheck, X, Trash2
+  FileText, RefreshCw, Search, ShieldCheck, X, Archive
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -67,42 +52,66 @@ export default function MyFiles({ walletAddress }) {
   const [processing, setProcessing] = useState(null);
 
   const fetchFiles = useCallback(async () => {
-    setLoading(true); setError('');
+    if (!walletAddress) return;
+    
+    setLoading(true); 
+    setError('');
+    
     try {
+      console.log("MyFiles: Requesting files for wallet:", walletAddress.toLowerCase());
       const res = await getAllFiles(walletAddress);
-      setFiles(res.files || []);
+      
+      // DEBUG: Log the full response
+      console.log("MyFiles: API Response:", res);
+
+      // Extract files array from response (handle both object/array cases)
+      const data = res.files || (Array.isArray(res) ? res : []);
+      
+      // Double check wallet matching client-side (Optional but requested)
+      const currentWallet = walletAddress.toLowerCase();
+      const userFiles = data.filter(file => {
+        const owner = (file.walletAddress || file.owner || '').toLowerCase();
+        return owner === currentWallet || owner === ''; // Allow if no owner or matches
+      });
+
+      setFiles(userFiles);
     } catch (err) {
+      console.error("MyFiles: Fetch Error:", err);
       setError(err.message || 'Failed to load files');
     } finally {
       setLoading(false);
     }
   }, [walletAddress]);
 
-  useEffect(() => { fetchFiles(); }, [fetchFiles]);
+  useEffect(() => { 
+    fetchFiles(); 
+  }, [fetchFiles]);
 
-  const handleTrashFile = async (fileId) => {
-    if (!window.confirm("Move this file to trash?")) return;
+  const handleArchiveFile = async (fileId) => {
+    if (!window.confirm("Move this asset to forensic archive?")) return;
     setProcessing(fileId);
     try {
-      // We need to import trashFile from api.js first
-      const { trashFile } = await import('../utils/api');
-      await trashFile(fileId);
-      toast.success("File moved to trash");
-      await fetchFiles(); // Requirement #1: Remove stale UI data
+      const { archiveFile } = await import('../utils/api');
+      await archiveFile(fileId, walletAddress);
+      toast.success("Asset moved to forensic archive");
+      await fetchFiles();
     } catch (err) {
-      alert(err.message || "Failed to move to trash");
+      toast.error(err.message || "Failed to archive asset");
     } finally {
       setProcessing(null);
     }
   };
 
-  const handleRestore = async (fileId) => {
+  const handleRestore = async (fileId, name) => {
     if (!window.confirm("Restore this file from blockchain backup?")) return;
     setProcessing(fileId);
     try {
       const { restoreFile } = await import('../utils/api');
-      await restoreFile(fileId);
-      toast.success("File restored successfully");
+      const res = await restoreFile(fileId, name, walletAddress);
+      if (res && res.restoreUrl) {
+        window.open(res.restoreUrl, '_blank');
+      }
+      toast.success(`✅ Restored: ${res.filename || name}`);
       await fetchFiles();
     } catch (err) {
       toast.error(err.message || "Restoration failed");
@@ -114,57 +123,61 @@ export default function MyFiles({ walletAddress }) {
   // ── Filter ──
   const q = query.trim().toLowerCase();
   const filtered = files.filter(f =>
-    (f.fileName || f.name || '').toLowerCase().includes(q)
+    (f.fileName || f.name || f.filename || '').toLowerCase().includes(q)
   );
 
   return (
-    <div className="page-inner">
-      {/* Header */}
-      <div className="ph">
-        <div>
-          <h1>My Files</h1>
-          <p>{files.length} file{files.length !== 1 ? 's' : ''} stored on blockchain</p>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="ref-btn" onClick={() => navigate('/trash')} style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-red)', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
-            <Trash2 size={16} /> View Trash
-          </button>
-          <button className="ref-btn" onClick={fetchFiles}>
-            <RefreshCw size={16} className={loading ? 'spin' : ''} /> Refresh
-          </button>
-        </div>
-      </div>
+    <div className="page">
+      <div className="page-inner">
+        {/* Header */}
+        <header className="ph">
+          <div>
+            <h1>Forensic Ledger</h1>
+            <p>Immutable cryptographic records of all registered assets</p>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="ref-btn" onClick={() => navigate('/archive')} style={{ background: 'rgba(148,163,184,0.08)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              <Archive size={14} /> <span>Forensic Archive</span>
+            </button>
+            <button className="ref-btn" onClick={fetchFiles}>
+              <RefreshCw size={14} className={loading ? 'spin' : ''} /> <span>Sync Ledger</span>
+            </button>
+          </div>
+        </header>
 
-      {error && <div className="error-box"><AlertTriangle size={16} /> {error}</div>}
+        {error && <div className="card" style={{ padding: '12px 16px', background: 'rgba(255,62,62,0.08)', color: 'var(--accent-red)', border: '1px solid rgba(255,62,62,0.2)', marginBottom: 16, fontSize: 13, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AlertTriangle size={16} /> {error}
+        </div>}
 
-      {/* ── Search Bar ── */}
-      <div className="search-bar" style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.09)',
-        borderRadius: 12, padding: '10px 16px',
-        marginBottom: 14, transition: 'border-color 0.2s',
-      }}>
-        <Search size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <input
-          placeholder="Search files by name..."
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          style={{
-            flex: 1, background: 'none', border: 'none', outline: 'none',
-            fontSize: 13, color: 'var(--text-primary)',
-            fontFamily: 'var(--font-main)',
-          }}
-        />
-        {query && (
-          <button
-            onClick={() => setQuery('')}
-            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'inline-flex' }}
-          >
-            <X size={15} />
-          </button>
-        )}
-      </div>
+        {/* ── Search Bar ── */}
+        <div className="search-bar" style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 14, padding: '12px 20px',
+          marginBottom: 16, transition: 'all 0.2s',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+        }}>
+          <Search size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <input
+            placeholder="Search assets by filename or identifier..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            style={{
+              flex: 1, background: 'none', border: 'none', outline: 'none',
+              fontSize: 14, color: 'var(--text-primary)',
+              fontFamily: 'var(--font-main)',
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'inline-flex', padding: 4 }}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
 
       {/* Ledger Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -205,7 +218,7 @@ export default function MyFiles({ walletAddress }) {
             <tbody>
               {filtered.map(f => {
                 const fileId = f.fileId || f.id;
-                const name = f.fileName || f.name || 'Unknown';
+                const name = f.fileName || f.name || f.filename || 'Unknown';
                 const txHash = f.txHash || '';
                 const isExpired = f.isExpired || (f.expiryDate && new Date(f.expiryDate) < new Date());
 
@@ -235,7 +248,7 @@ export default function MyFiles({ walletAddress }) {
 
                     {/* TX Hash — clickable Etherscan link */}
                     <td>
-                      {txHash && txHash.length === 66 ? ( // Requirement #3: Validate txHash
+                      {txHash && txHash.length === 66 ? ( 
                         <a
                           href={`https://sepolia.etherscan.io/tx/${txHash}`}
                           target="_blank" rel="noreferrer"
@@ -266,16 +279,18 @@ export default function MyFiles({ walletAddress }) {
                           <ShieldCheck size={13} /> Verify
                         </button>
 
-                        {/* Restore Button */}
-                        <button
-                          className="btn btn-teal"
-                          style={{ padding: '4px 10px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          onClick={e => { e.stopPropagation(); handleRestore(fileId); }}
-                          disabled={processing === fileId}
-                          title="Restore original from IPFS"
-                        >
-                          <RefreshCw size={13} className={processing === fileId ? "spin" : ""} /> Restore
-                        </button>
+                        {/* Restore Button (Forensic Logic) */}
+                        {(f.status === 'tampered' || f.status === 'corrupted' || f.status === 'UNDER_INVESTIGATION') && (
+                          <button
+                            className="btn btn-teal"
+                            style={{ padding: '4px 10px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            onClick={e => { e.stopPropagation(); handleRestore(fileId, name); }}
+                            disabled={processing === fileId}
+                            title="Restore integrity from forensic backup"
+                          >
+                            <RefreshCw size={13} className={processing === fileId ? "spin" : ""} /> Restore
+                          </button>
+                        )}
 
                         {/* Blockchain Proof Button */}
                         {txHash && (
@@ -290,15 +305,15 @@ export default function MyFiles({ walletAddress }) {
                           </a>
                         )}
 
-                        {/* Trash Button */}
+                        {/* Archive Button */}
                         <button
                           className="btn btn-g"
-                          style={{ padding: '4px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--accent-red)' }}
-                          onClick={e => { e.stopPropagation(); handleTrashFile(fileId); }}
+                          style={{ padding: '4px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, color: '#64748b' }}
+                          onClick={e => { e.stopPropagation(); handleArchiveFile(fileId); }}
                           disabled={processing === fileId}
-                          title="Move to Trash"
+                          title="Move to Archive"
                         >
-                          {processing === fileId ? <RefreshCw size={13} className="spin" /> : <Trash2 size={13} />}
+                          {processing === fileId ? <RefreshCw size={13} className="spin" /> : <Archive size={13} />}
                         </button>
                       </div>
                     </td>
@@ -315,6 +330,7 @@ export default function MyFiles({ walletAddress }) {
           Showing {filtered.length} of {files.length} file{files.length !== 1 ? 's' : ''}
         </p>
       )}
+      </div>
     </div>
   );
 }
