@@ -213,7 +213,6 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
 
   /* ── UI helpers ── */
   const isCritical = data?.riskLevel === 'CRITICAL' || data?.riskLevel === 'HIGH';
-  const isText     = data?.isTextComparable;
   const isBinary   = data?.isBinary;
 
   return (
