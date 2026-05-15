@@ -12,7 +12,7 @@ const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/
 
 /* ─── Risk Score Ring ───────────────────────────────────── */
 function RiskRing({ score, level }) {
-  const r   = 36;
+  const r    = 36;
   const circ = 2 * Math.PI * r;
   const fill = circ - (score / 100) * circ;
 
@@ -55,8 +55,8 @@ function RiskRing({ score, level }) {
 
 /* ─── File Preview ──────────────────────────────────────── */
 function FilePreview({ content, mimeType, label, status }) {
-  const isImage = mimeType?.startsWith('image/');
-  const isPDF   = mimeType === 'application/pdf';
+  const isImage   = mimeType?.startsWith('image/');
+  const isPDF     = mimeType === 'application/pdf';
   const isDataURL = content?.startsWith('data:');
 
   return (
@@ -90,22 +90,44 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState('');
-  const [tab,       setTab]       = useState('diff');   // diff | preview | info
+  const [tab,       setTab]       = useState('diff');  // diff | preview | info
   const [restoring, setRestoring] = useState(false);
   const [restored,  setRestored]  = useState(false);
 
   /* ── Fetch forensic data ── */
   const fetchData = useCallback(async () => {
+    if (!fileId) {
+      setError('No file ID provided');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      const res  = await fetch(
-        `${API}/file/forensic-compare/${fileId}`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const url = `${API}/file/forensic-compare/${encodeURIComponent(fileId)}`;
+      console.log('[ForensicModal] Fetching:', url);
+
+      const res = await fetch(url);
+
+      if (!res.ok) {
+        // Try to read backend error message
+        let msg = `HTTP ${res.status}`;
+        try {
+          const json = await res.json();
+          msg = json.error || json.message || msg;
+        } catch (_) { /* ignore */ }
+        throw new Error(msg);
+      }
+
       const json = await res.json();
+      console.log('[ForensicModal] Response keys:', Object.keys(json));
       setData(json);
+
+      // Auto-switch to preview tab for binary files
+      if (json.isBinary) setTab('preview');
+
     } catch (e) {
+      console.error('[ForensicModal] Fetch error:', e);
       setError(e.message || 'Failed to load forensic data');
     } finally {
       setLoading(false);
@@ -118,12 +140,16 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
   const handleRestore = async () => {
     setRestoring(true);
     try {
-      const res = await fetch(`${API}/restore/${fileId}`,
+      const res = await fetch(`${API}/restore/${encodeURIComponent(fileId)}`,
         { method: 'POST' });
-      if (!res.ok) throw new Error('Restore failed');
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { const j = await res.json(); msg = j.error || msg; } catch (_) {}
+        throw new Error(msg);
+      }
       setRestored(true);
       onRestored?.();
-      await fetchData(); // refresh
+      await fetchData(); // refresh comparison after restore
     } catch (e) {
       alert('Restore failed: ' + e.message);
     } finally {
@@ -131,38 +157,64 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
     }
   };
 
+  /* ── Download Evidence ── */
+  const handleDownloadEvidence = () => {
+    if (!data) return;
+    const report = {
+      generatedAt:   new Date().toISOString(),
+      fileId:        data.fileId,
+      fileName:      data.fileName,
+      walletAddress: data.walletAddress,
+      txHash:        data.txHash,
+      status:        data.status,
+      riskScore:     data.riskScore,
+      riskLevel:     data.riskLevel,
+      originalHash:  data.originalHash,
+      modifiedHash:  data.modifiedHash,
+      isIdentical:   data.isIdentical,
+      mimeType:      data.mimeType,
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `forensic-report-${data.fileId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   /* ── Diff viewer styles ── */
   const diffStyles = {
     variables: {
       dark: {
-        diffViewerBackground:       '#0d1117',
-        diffViewerColor:            '#e2e8f0',
-        addedBackground:            'rgba(20,184,166,0.15)',
-        addedColor:                 '#d1fae5',
-        removedBackground:          'rgba(239,68,68,0.15)',
-        removedColor:               '#fecaca',
-        wordAddedBackground:        'rgba(20,184,166,0.4)',
-        wordRemovedBackground:      'rgba(239,68,68,0.4)',
-        addedGutterBackground:      'rgba(20,184,166,0.25)',
-        removedGutterBackground:    'rgba(239,68,68,0.25)',
-        gutterBackground:           '#0a0f1a',
-        gutterColor:                '#475569',
-        codeFoldBackground:         '#111827',
-        codeFoldGutterBackground:   '#111827',
-        codeFoldContentColor:       '#64748b',
-        emptyLineBackground:        '#0a0f1a',
-        highlightBackground:        'rgba(245,158,11,0.15)',
-        highlightGutterBackground:  'rgba(245,158,11,0.25)',
+        diffViewerBackground:      '#0d1117',
+        diffViewerColor:           '#e2e8f0',
+        addedBackground:           'rgba(20,184,166,0.15)',
+        addedColor:                '#d1fae5',
+        removedBackground:         'rgba(239,68,68,0.15)',
+        removedColor:              '#fecaca',
+        wordAddedBackground:       'rgba(20,184,166,0.4)',
+        wordRemovedBackground:     'rgba(239,68,68,0.4)',
+        addedGutterBackground:     'rgba(20,184,166,0.25)',
+        removedGutterBackground:   'rgba(239,68,68,0.25)',
+        gutterBackground:          '#0a0f1a',
+        gutterColor:               '#475569',
+        codeFoldBackground:        '#111827',
+        codeFoldGutterBackground:  '#111827',
+        codeFoldContentColor:      '#64748b',
+        emptyLineBackground:       '#0a0f1a',
+        highlightBackground:       'rgba(245,158,11,0.15)',
+        highlightGutterBackground: 'rgba(245,158,11,0.25)',
       },
     },
-    line: { fontFamily: 'monospace', fontSize: '12px' },
+    line:   { fontFamily: 'monospace', fontSize: '12px' },
     gutter: { minWidth: '40px' },
   };
 
   /* ── UI helpers ── */
-  const isCritical = data?.riskLevel === 'CRITICAL';
-  const isTextFile = data?.isTextComparable;
-  const isBin      = data?.isBinary;
+  const isCritical = data?.riskLevel === 'CRITICAL' || data?.riskLevel === 'HIGH';
+  const isText     = data?.isTextComparable;
+  const isBinary   = data?.isBinary;
 
   return (
     <AnimatePresence>
@@ -182,19 +234,16 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
         >
           {/* ── Header ── */}
           <div className={`forensic-header ${isCritical ? 'critical' : ''}`}>
-            {/* Risk ring */}
-            {data && (
-              <RiskRing
-                score={data.riskScore}
-                level={data.riskLevel}
-              />
+            {/* Risk ring — only when data is loaded */}
+            {data && !loading && (
+              <RiskRing score={data.riskScore} level={data.riskLevel} />
             )}
 
             {/* Title */}
             <div className="forensic-title-block">
               <div className="forensic-title">
                 <h2>🔬 Forensic Report</h2>
-                {isCritical && (
+                {isCritical && !loading && (
                   <motion.span
                     animate={{ opacity: [1, 0.5, 1] }}
                     transition={{ duration: 1.2, repeat: Infinity }}
@@ -202,14 +251,15 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
                     ⚠ TAMPERING DETECTED
                   </motion.span>
                 )}
+                {data?.isIdentical && !loading && (
+                  <span className="badge badge-valid">✅ IDENTICAL</span>
+                )}
                 {restored && (
-                  <span className="badge badge-restored">
-                    ✅ RESTORED
-                  </span>
+                  <span className="badge badge-restored">✅ RESTORED</span>
                 )}
               </div>
               <div className="forensic-subtitle">
-                {data?.fileName || data?.filename || filename || fileId}
+                {data?.fileName || filename || fileId}
                 {data?.txHash && data.txHash !== 'pending' && (
                   <> · TX: {data.txHash.slice(0, 16)}...</>
                 )}
@@ -219,10 +269,10 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
             {/* Tabs */}
             <div className="forensic-tabs">
               {[
-                { key: 'diff',    label: '⚡ Diff' },
+                { key: 'diff',    label: '⚡ Diff',    hidden: isBinary },
                 { key: 'preview', label: '👁 Preview' },
                 { key: 'info',    label: 'ℹ Info' },
-              ].map(({ key, label }) => (
+              ].filter(t => !t.hidden).map(({ key, label }) => (
                 <button key={key}
                   className={`forensic-tab ${tab === key ? 'active' : ''}`}
                   onClick={() => setTab(key)}>
@@ -237,35 +287,63 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
 
           {/* ── Body ── */}
           <div className="forensic-body">
-            {loading ? (
+
+            {/* LOADING */}
+            {loading && (
               <div className="forensic-loading">
                 <div className="forensic-spinner" />
-                Analyzing file forensics...
+                Generating forensic comparison...
               </div>
-            ) : error ? (
+            )}
+
+            {/* ERROR */}
+            {!loading && error && (
               <div className="forensic-error">
                 <div className="forensic-error-icon">⚠️</div>
-                {error}
+                <div className="forensic-error-message">{error}</div>
+                <button className="forensic-retry-btn" onClick={fetchData}>
+                  🔄 Retry
+                </button>
+                <div className="forensic-error-hint">
+                  <strong>Possible causes:</strong>
+                  <ul>
+                    <li>The file was not saved locally during upload</li>
+                    <li>The backend server is not running</li>
+                    <li>The fileId is invalid</li>
+                  </ul>
+                </div>
               </div>
-            ) : (
+            )}
+
+            {/* CONTENT */}
+            {!loading && !error && data && (
               <>
                 {/* ── DIFF TAB ── */}
                 {tab === 'diff' && (
                   <div className="forensic-diff-wrap">
-                    {!isTextFile || isBin ? (
+                    {isBinary ? (
                       <div className="forensic-no-diff">
                         <div className="forensic-no-diff-icon">📄</div>
                         <h3>Diff Preview Unavailable</h3>
                         <p>
                           Text diff is not available for{' '}
-                          <code>{data?.mimeType}</code> files.
-                          Use Preview tab instead.
+                          <code>{data.mimeType}</code> files.
+                          Use the <strong>Preview</strong> tab instead.
+                        </p>
+                      </div>
+                    ) : data.isIdentical ? (
+                      <div className="forensic-no-diff forensic-identical">
+                        <div className="forensic-no-diff-icon">✅</div>
+                        <h3>Files Are Identical</h3>
+                        <p>
+                          The current file matches the original blockchain-sealed version.
+                          No tampering detected.
                         </p>
                       </div>
                     ) : (
                       <ReactDiffViewer
-                        oldValue={data?.original || ''}
-                        newValue={data?.modified || ''}
+                        oldValue={data.original || ''}
+                        newValue={data.modified || ''}
                         splitView={true}
                         compareMethod={DiffMethod.WORDS}
                         useDarkTheme={true}
@@ -282,14 +360,14 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
                 {tab === 'preview' && (
                   <div className="forensic-preview-wrap">
                     <FilePreview
-                      content={data?.original}
-                      mimeType={data?.mimeType}
+                      content={data.original}
+                      mimeType={data.mimeType}
                       label="Original (Sealed)"
                       status="original"
                     />
                     <FilePreview
-                      content={data?.modified}
-                      mimeType={data?.mimeType}
+                      content={data.modified}
+                      mimeType={data.mimeType}
                       label="Current Version"
                       status="modified"
                     />
@@ -304,42 +382,27 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
                     </div>
 
                     {[
-                      { label: 'File ID',
-                        val: data?.fileId },
-                      { label: 'Filename',
-                        val: data?.fileName || data?.filename },
-                      { label: 'MIME Type',
-                        val: data?.mimeType },
-                      { label: 'Status',
-                        val: data?.status?.toUpperCase() },
-                      { label: 'Risk Score',
-                        val: `${data?.riskScore}/100 — ${data?.riskLevel}` },
-                      { label: 'Original Hash',
-                        val: data?.originalHash },
-                      { label: 'TX Hash',
-                        val: data?.txHash },
-                      { label: 'Wallet',
-                        val: data?.walletAddress },
-                      { label: 'Uploaded',
-                        val: data?.uploadedAt
-                          ? new Date(data.uploadedAt)
-                              .toLocaleString()
-                          : '--' },
+                      { label: 'File ID',        val: data.fileId },
+                      { label: 'Filename',       val: data.fileName },
+                      { label: 'MIME Type',      val: data.mimeType },
+                      { label: 'File Size',      val: data.fileSize ? `${(data.fileSize / 1024).toFixed(1)} KB` : '--' },
+                      { label: 'Status',         val: data.status?.toUpperCase() },
+                      { label: 'Risk Score',     val: `${data.riskScore}/100 — ${data.riskLevel}` },
+                      { label: 'Identical',      val: data.isIdentical ? '✅ Yes — No tampering' : '❌ No — Modified' },
+                      { label: 'Original Hash',  val: data.originalHash },
+                      { label: 'Modified Hash',  val: data.modifiedHash },
+                      { label: 'TX Hash',        val: data.txHash },
+                      { label: 'Wallet',         val: data.walletAddress },
+                      { label: 'Uploaded',       val: data.uploadedAt ? new Date(data.uploadedAt).toLocaleString() : '--' },
                     ].map(({ label, val }) => (
                       <div key={label} className="forensic-info-row">
-                        <span className="forensic-info-label">
-                          {label}
-                        </span>
-                        <span className="forensic-info-value">
-                          {val || '--'}
-                        </span>
+                        <span className="forensic-info-label">{label}</span>
+                        <span className="forensic-info-value">{val || '--'}</span>
                       </div>
                     ))}
 
                     {/* Etherscan link */}
-                    {data?.txHash &&
-                     data.txHash !== 'pending' &&
-                     data.txHash.startsWith('0x') && (
+                    {data.txHash && data.txHash !== 'pending' && data.txHash.startsWith('0x') && (
                       <a
                         href={`https://sepolia.etherscan.io/tx/${data.txHash}`}
                         target="_blank" rel="noreferrer"
@@ -354,21 +417,43 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
           </div>
 
           {/* ── Footer ── */}
-          {!loading && !error && (
+          {!loading && !error && data && (
             <div className="forensic-footer">
               {/* Status pill */}
               <div className="forensic-footer-left">
                 <span className="forensic-footer-filename">
-                  {data?.fileName || data?.filename}
+                  {data.fileName || filename}
                 </span>
-                <span className={`badge badge-${data?.status || 'pending'}`}>
-                  {data?.status?.toUpperCase()}
+                <span className={`badge badge-${data.status || 'pending'}`}>
+                  {data.status?.toUpperCase()}
                 </span>
               </div>
 
               {/* Actions */}
               <div className="forensic-footer-actions">
-                {data?.status === 'tampered' && !restored && (
+                {/* Download Evidence */}
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleDownloadEvidence}
+                  className="btn-evidence">
+                  📥 Download Evidence
+                </motion.button>
+
+                {/* Open Blockchain Proof */}
+                {data.txHash && data.txHash !== 'pending' && data.txHash.startsWith('0x') && (
+                  <motion.a
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    href={`https://sepolia.etherscan.io/tx/${data.txHash}`}
+                    target="_blank" rel="noreferrer"
+                    className="btn-blockchain">
+                    🔗 Blockchain Proof
+                  </motion.a>
+                )}
+
+                {/* Restore */}
+                {(data.status === 'tampered' || !data.isIdentical) && !restored && (
                   <motion.button
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}

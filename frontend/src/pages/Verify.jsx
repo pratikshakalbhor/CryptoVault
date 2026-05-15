@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { pageVariants, cardVariants } from '../utils/animations';
 import { verifyFileOnChain } from '../utils/blockchain';
