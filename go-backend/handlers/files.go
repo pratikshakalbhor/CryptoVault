@@ -17,6 +17,7 @@ import (
 
 	"cryptovault/database"
 	"cryptovault/models"
+	"cryptovault/utils"
 )
 
 func GetAllFiles(c *gin.Context) {
@@ -29,9 +30,9 @@ func GetAllFiles(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Filter for owner and non-trashed files
+	// Filter for owner and non-archived files
 	filter := bson.M{
-		"isTrashed": false,
+		"isArchived": false,
 	}
 
 	if wallet != "" {
@@ -126,15 +127,15 @@ func RevokeFile(c *gin.Context) {
 
 	collection.UpdateOne(ctx,
 		bson.M{"fileId": fileID},
-		bson.M{"$set": bson.M{"isRevoked": true, "status": "revoked"}},
+		bson.M{"$set": bson.M{"isRevoked": true, "status": "ARCHIVED", "isArchived": true}},
 	)
 
-	// Notification
-	go CreateNotification(strings.ToLower(record.WalletAddress), "File revoked: "+record.Filename, "warning", fileID)
+	// Forensic Audit
+	LogAudit(strings.ToLower(record.WalletAddress), fileID, record.Filename, "FILE_ARCHIVED", record.TxHash, record.BlockNumber, "User manually revoked and archived the forensic asset.")
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": fileID + " revoked successfully",
+		"message": fileID + " archived and revoked successfully",
 	})
 }
 
@@ -166,50 +167,42 @@ func GetStats(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	baseFilter := bson.M{"isTrashed": false}
+	baseFilter := bson.M{"isArchived": false}
 	if wallet != "" {
 		baseFilter["walletAddress"] = wallet
 	}
 
 	total, _ := collection.CountDocuments(ctx, baseFilter)
 
-	validFilter := bson.M{"status": "valid", "isTrashed": false}
+	// SECURE
+	secureFilter := bson.M{"status": bson.M{"$in": []string{"SECURE", "valid"}}, "isArchived": false}
 	if wallet != "" {
-		validFilter["walletAddress"] = wallet
+		secureFilter["walletAddress"] = wallet
 	}
-	valid, _ := collection.CountDocuments(ctx, validFilter)
+	secure, _ := collection.CountDocuments(ctx, secureFilter)
 
-	tamperedFilter := bson.M{"status": "tampered", "isTrashed": false}
+	// TAMPERED
+	tamperedFilter := bson.M{"status": "TAMPERED", "isArchived": false}
 	if wallet != "" {
 		tamperedFilter["walletAddress"] = wallet
 	}
 	tampered, _ := collection.CountDocuments(ctx, tamperedFilter)
 
-	// Fetch latest 5 verification logs for this wallet
-	var recentLogs []models.FileRecord
-	logsFilter := bson.M{"verifiedAt": bson.M{"$exists": true}, "isTrashed": false}
+	// ARCHIVED
+	archivedFilter := bson.M{"isArchived": true}
 	if wallet != "" {
-		logsFilter["walletAddress"] = wallet
+		archivedFilter["walletAddress"] = wallet
 	}
-
-	opts := options.Find().SetSort(bson.M{"verifiedAt": -1}).SetLimit(5)
-	cursor, err := collection.Find(ctx, logsFilter, opts)
-	if err == nil {
-		cursor.All(ctx, &recentLogs)
-		cursor.Close(ctx)
-	}
-	if recentLogs == nil {
-		recentLogs = []models.FileRecord{}
-	}
+	archived, _ := collection.CountDocuments(ctx, archivedFilter)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"stats": gin.H{
 			"total":    total,
-			"valid":    valid,
+			"secure":   secure,
 			"tampered": tampered,
+			"archived": archived,
 		},
-		"recentLogs": recentLogs,
 	})
 }
 
@@ -313,36 +306,52 @@ func UpdateTxHash(c *gin.Context) {
 
 
 
-// ── TRASH FILE ─────────────────────────────────
-func TrashFile(c *gin.Context) {
+// ── ARCHIVE FILE (Rename of Trash) ───────────────────────────
+func ArchiveFile(c *gin.Context) {
 	fileId := c.Param("id")
 
 	col := database.GetCollection("files")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	var body struct {
+		Wallet string `json:"wallet"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	wallet := strings.ToLower(body.Wallet)
+
 	now := time.Now()
+	var record models.FileRecord
+	col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record)
+
+	if wallet == "" {
+		wallet = record.WalletAddress
+	}
+
 	col.UpdateOne(ctx,
 		bson.M{"fileId": fileId},
 		bson.M{"$set": bson.M{
-			"isTrashed": true,
-			"trashedAt": now,
-			"updatedAt": now,
+			"isArchived": true,
+			"archivedAt": now,
+			"status":     "ARCHIVED",
+			"updatedAt":  now,
 		}},
 	)
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "File moved to trash"})
+	LogAudit(wallet, fileId, record.Filename, "FILE_ARCHIVED", record.TxHash, record.BlockNumber, "File moved to secure archives.")
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "File moved to archives"})
 }
 
-// ── GET TRASH FILES ────────────────────────────
-func GetTrashFiles(c *gin.Context) {
+// ── GET ARCHIVED FILES ────────────────────────────
+func GetArchivedFiles(c *gin.Context) {
 	wallet := c.Query("wallet")
 
 	col := database.GetCollection("files")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	filter := bson.M{"isTrashed": true}
+	filter := bson.M{"isArchived": true}
 	if wallet != "" {
 		filter["walletAddress"] = strings.ToLower(wallet)
 	}
@@ -363,25 +372,41 @@ func GetTrashFiles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "files": files})
 }
 
-// ── RESTORE FROM TRASH ─────────────────────────
-func RestoreFromTrash(c *gin.Context) {
+// ── RESTORE FROM ARCHIVE ─────────────────────────
+func RestoreFromArchive(c *gin.Context) {
 	fileId := c.Param("id")
 
 	col := database.GetCollection("files")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	var body struct {
+		Wallet string `json:"wallet"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	wallet := strings.ToLower(body.Wallet)
+
 	now := time.Now()
+	var record models.FileRecord
+	col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record)
+
+	if wallet == "" {
+		wallet = record.WalletAddress
+	}
+
 	col.UpdateOne(ctx,
 		bson.M{"fileId": fileId},
 		bson.M{"$set": bson.M{
-			"isTrashed": false,
-			"trashedAt": nil,
-			"updatedAt": now,
+			"isArchived": false,
+			"archivedAt": nil,
+			"status":     "SECURE",
+			"updatedAt":  now,
 		}},
 	)
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "File restored from trash"})
+	LogAudit(wallet, fileId, record.Filename, "FILE_RESTORED", record.TxHash, record.BlockNumber, "File restored from archives to active vault.")
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "File restored from archives"})
 }
 
 // ── PERMANENT DELETE ───────────────────────────
@@ -469,7 +494,7 @@ func DownloadOriginal(c *gin.Context) {
 		}
 	}
 
-	// ✅ IPFS — complete prefix clean
+	// ✅ IPFS — complete prefix clean + decrypt AES
 	if record.IpfsCID != "" {
 		cid := strings.TrimSpace(record.IpfsCID)
 		cid = strings.TrimPrefix(cid, "https://gateway.pinata.cloud/ipfs/")
@@ -479,7 +504,7 @@ func DownloadOriginal(c *gin.Context) {
 
 		// ✅ Correct URL
 		ipfsURL := "https://gateway.pinata.cloud/ipfs/" + cid
-		log.Printf("📥 Downloading: %s → %s", filename, ipfsURL)
+		log.Printf("📥 Downloading from IPFS: %s → %s", filename, ipfsURL)
 
 		client := &http.Client{Timeout: 60 * time.Second}
 		resp, err := client.Get(ipfsURL)
@@ -495,6 +520,21 @@ func DownloadOriginal(c *gin.Context) {
 		}
 		defer resp.Body.Close()
 
+		// Read encrypted bytes from IPFS
+		encryptedBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read IPFS content"})
+			return
+		}
+
+		// Decrypt AES-256 (file was encrypted before IPFS upload)
+		plainBytes, decErr := utils.DecryptAES(encryptedBytes)
+		if decErr != nil {
+			log.Printf("⚠️ AES decrypt failed (serving raw): %v", decErr)
+			// If decrypt fails (maybe not encrypted), serve raw
+			plainBytes = encryptedBytes
+		}
+
 		// ✅ Correct headers for file type
 		c.Header("Content-Type", mimeType)
 		c.Header("Content-Disposition",
@@ -502,7 +542,7 @@ func DownloadOriginal(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Expose-Headers", "Content-Disposition")
 
-		io.Copy(c.Writer, resp.Body)
+		c.Data(http.StatusOK, mimeType, plainBytes)
 		return
 	}
 

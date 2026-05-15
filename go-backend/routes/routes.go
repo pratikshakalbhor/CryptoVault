@@ -15,18 +15,17 @@ func RegisterRoutes(r *gin.Engine) {
 
 		// ── Files ──
 		api.GET("/files", handlers.GetAllFiles)
-		api.GET("/files/trash/all", handlers.GetTrashFiles)
+		api.GET("/files/archive/all", handlers.GetArchivedFiles)
 		api.GET("/files/:id", handlers.GetFileByID)
-		api.PUT("/files/:id/revoke", handlers.RevokeFile)
+		api.PUT("/files/:id/archive", handlers.ArchiveFile)
+		api.POST("/files/:id/restore-archive", handlers.RestoreFromArchive)
+		api.GET("/audit-logs", handlers.GetAuditLogs)
+
+		// Essential File Actions
 		api.PUT("/files/:id/visibility", handlers.UpdateVisibility)
 		api.PATCH("/files/:id/tx", handlers.UpdateTxHash)
-		api.GET("/files/:id/versions", handlers.GetFileVersions)
 		api.GET("/files/:id/certificate", handlers.DownloadCertificate)
-		api.POST("/files/:id/restore", handlers.RestoreFile)
 		api.GET("/files/:id/download", handlers.DownloadOriginal)
-		api.DELETE("/files/:id", handlers.TrashFile)
-		api.POST("/files/:id/untrash", handlers.RestoreFromTrash)
-		api.DELETE("/files/:id/permanent", handlers.PermanentDeleteFile)
 
 		// ── Stats ──
 		api.GET("/stats", handlers.GetStats)
@@ -42,5 +41,9 @@ func RegisterRoutes(r *gin.Engine) {
 
 		// ── Public ──
 		api.GET("/public/verify/:id", handlers.PublicVerify)
+
+		// ── Forensic ──
+		api.GET("/file/forensic-compare/:fileId", handlers.ForensicCompare)
+		api.POST("/restore/:fileId", handlers.ForensicRestore)
 	}
 }

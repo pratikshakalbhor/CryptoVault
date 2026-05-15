@@ -30,6 +30,19 @@ func VerifyFile(c *gin.Context) {
 	defer file.Close()
 
 	fileId := strings.TrimSpace(c.PostForm("fileId"))
+	wallet := strings.ToLower(c.PostForm("wallet"))
+
+	if fileId == "" {
+		var body struct {
+			FileID string `json:"fileId"`
+			Wallet string `json:"wallet"`
+		}
+		if err := c.ShouldBindJSON(&body); err == nil {
+			fileId = body.FileID
+			wallet = strings.ToLower(body.Wallet)
+		}
+	}
+
 	currentSize := header.Size
 
 	// ── 2. SHA-256 hash generate ──
@@ -163,12 +176,16 @@ func VerifyFile(c *gin.Context) {
 			tamperCol.InsertOne(ctx, tamperDoc)
 		}
 
+		// Log Audit
+		LogAudit(wallet, record.FileID, record.Filename, "FILE_VERIFIED", record.TxHash, record.BlockNumber, fmt.Sprintf("Result: %s", status))
+
 		// Notifications
 		switch status {
 		case "VALID":
 			NotifyVerifyValid(record.WalletAddress, record.Filename, fileId)
 		case "TAMPERED":
 			NotifyTamperDetected(record.WalletAddress, record.Filename, fileId)
+			LogAudit(wallet, record.FileID, record.Filename, "TAMPER_DETECTED", record.TxHash, record.BlockNumber, "Forensic mismatch detected during verification")
 		}
 	}
 
@@ -351,6 +368,12 @@ func RestoreFile(c *gin.Context) {
 		return
 	}
 
+	var body struct {
+		Wallet string `json:"wallet"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	wallet := strings.ToLower(body.Wallet)
+
 	now := time.Now()
 
 	// ── Option 1: Local backup folder ──
@@ -361,9 +384,20 @@ func RestoreFile(c *gin.Context) {
 				bson.M{"$set": bson.M{"status": "valid", "updatedAt": now}},
 			)
 			NotifyRestored(record.WalletAddress, record.Filename, fileId)
-			c.Header("Content-Disposition",
-				fmt.Sprintf(`attachment; filename="%s"`, record.Filename))
-			c.Header("Content-Type", record.MimeType)
+			LogAudit(wallet, fileId, record.Filename, "FILE_RESTORED", record.TxHash, record.BlockNumber, "Forensic restoration from local vault")
+			
+			// Detect MIME type
+			mimeType := record.MimeType
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+				if strings.HasSuffix(strings.ToLower(record.Filename), ".docx") {
+					mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+				}
+			}
+
+			c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, record.Filename))
+			c.Header("Content-Type", mimeType)
+			c.Header("Access-Control-Expose-Headers", "Content-Disposition")
 			c.File(record.BackupPath)
 			return
 		}
@@ -376,25 +410,26 @@ func RestoreFile(c *gin.Context) {
 		if err == nil && resp.StatusCode == 200 {
 			defer resp.Body.Close()
 
-			// Save locally
-			os.MkdirAll("./restored", 0755)
-			destPath := filepath.Join("./restored", record.Filename)
-			out, _ := os.Create(destPath)
-			io.Copy(out, resp.Body)
-			out.Close()
-
 			col.UpdateOne(ctx,
 				bson.M{"fileId": fileId},
 				bson.M{"$set": bson.M{"status": "valid", "updatedAt": now}},
 			)
 			NotifyRestored(record.WalletAddress, record.Filename, fileId)
 
-			c.JSON(http.StatusOK, gin.H{
-				"success":      true,
-				"message":      "Original file restored from IPFS",
-				"filename":     record.Filename,
-				"downloadPath": "/restored/" + record.Filename,
-			})
+			// Detect MIME
+			mimeType := record.MimeType
+			if mimeType == "" {
+				mimeType = "application/octet-stream"
+				if strings.HasSuffix(strings.ToLower(record.Filename), ".docx") {
+					mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+				}
+			}
+
+			c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, record.Filename))
+			c.Header("Content-Type", mimeType)
+			c.Header("Access-Control-Expose-Headers", "Content-Disposition")
+			
+			io.Copy(c.Writer, resp.Body)
 			return
 		}
 	}

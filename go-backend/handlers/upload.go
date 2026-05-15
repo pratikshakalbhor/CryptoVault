@@ -78,6 +78,8 @@ func UploadFile(c *gin.Context) {
 			"publicId": existing.PublicID,
 			"fileHash": fileHash,
 			"filename": existing.Filename,
+			"txHash":   existing.TxHash,
+			"ipfsCID":  existing.IpfsCID,
 			"message":  "File already registered",
 			"existing": true,
 		})
@@ -257,6 +259,9 @@ func UploadFile(c *gin.Context) {
 
 	// Notification
 	NotifyUpload(wallet, header.Filename, fileID)
+
+	// Log Audit
+	LogAudit(wallet, fileID, header.Filename, "FILE_UPLOADED", txHash, 0, "Initial registration and encryption on blockchain")
 
 	//  FINAL RESPONSE
 	c.JSON(http.StatusCreated, gin.H{

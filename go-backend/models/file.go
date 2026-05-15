@@ -4,6 +4,7 @@ import "time"
 
 type FileRecord struct {
 	FileID        string     `json:"fileId"        bson:"fileId"`
+	PublicID      string     `json:"publicId"      bson:"publicId"`
 	Filename      string     `json:"fileName"      bson:"filename"`
 	FileExtension string     `json:"fileExtension" bson:"fileExtension"`
 	OriginalHash  string     `json:"originalHash"  bson:"originalHash"`
@@ -16,20 +17,29 @@ type FileRecord struct {
 	WalletAddress string     `json:"walletAddress" bson:"walletAddress"`
 	TxHash        string     `json:"txHash"        bson:"txHash"`
 	BlockNumber   uint64     `json:"blockNumber"   bson:"blockNumber"`
-	Status        string     `json:"status"        bson:"status"`
+	Status        string     `json:"status"        bson:"status"` // SECURE, TAMPERED, ARCHIVED, etc.
 	IsRevoked     bool       `json:"isRevoked"     bson:"isRevoked"`
-	IsTrashed     bool       `json:"isTrashed"     bson:"isTrashed"`
-	TrashedAt     *time.Time `json:"trashedAt"     bson:"trashedAt"`
+	IsArchived    bool       `json:"isArchived"    bson:"isArchived"`
+	ArchivedAt    *time.Time `json:"archivedAt"    bson:"archivedAt"`
 	Visibility    string     `json:"visibility"    bson:"visibility"`
 	SharedWith    []string   `json:"sharedWith"    bson:"sharedWith"`
 	ExpiryDate    *time.Time `json:"expiryDate"    bson:"expiryDate"`
-	ParentFileID  string     `json:"parentFileId"  bson:"parentFileId"`
 	Version       int        `json:"version"       bson:"version"`
-	VersionNote   string     `json:"versionNote"   bson:"versionNote"`
-	PublicID      string     `json:"publicId"      bson:"publicId"`
 	UploadedAt    time.Time  `json:"uploadedAt"    bson:"uploadedAt"`
 	VerifiedAt    *time.Time `json:"verifiedAt"    bson:"verifiedAt"`
 	UpdatedAt     *time.Time `json:"updatedAt"     bson:"updatedAt"`
+}
+
+type AuditLog struct {
+	LogID         string    `json:"logId"         bson:"logId"`
+	FileID        string    `json:"fileId"        bson:"fileId"`
+	FileName      string    `json:"fileName"      bson:"fileName"`
+	WalletAddress string    `json:"walletAddress" bson:"walletAddress"`
+	EventType     string    `json:"eventType"     bson:"eventType"` // FILE_UPLOADED, TAMPER_DETECTED, etc.
+	TxHash        string    `json:"txHash"        bson:"txHash"`
+	BlockNumber   uint64    `json:"blockNumber"   bson:"blockNumber"`
+	Timestamp     time.Time `json:"timestamp"     bson:"timestamp"`
+	Details       string    `json:"details"       bson:"details"`
 }
 
 type VersionRecord struct {
@@ -42,8 +52,8 @@ type VersionRecord struct {
 
 type Stats struct {
 	Total    int64 `json:"total"`
-	Valid    int64 `json:"valid"`
+	Secure   int64 `json:"secure"`
 	Tampered int64 `json:"tampered"`
-	Revoked  int64 `json:"revoked"`
+	Archived int64 `json:"archived"`
 	Pending  int64 `json:"pending"`
 }
