@@ -323,7 +323,7 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
                     {isBinary ? (
                       <div className="forensic-no-diff">
                         <div className="forensic-no-diff-icon">📄</div>
-                        <h3>Diff Preview Unavailable</h3>
+                        <h3>Binary forensic comparison unavailable</h3>
                         <p>
                           Text diff is not available for{' '}
                           <code>{data.mimeType}</code> files.
