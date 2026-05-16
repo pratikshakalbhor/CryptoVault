@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -17,7 +16,6 @@ import (
 
 	"cryptovault/database"
 	"cryptovault/models"
-	"cryptovault/utils"
 )
 
 func GetAllFiles(c *gin.Context) {
@@ -456,97 +454,54 @@ func PublicVerify(c *gin.Context) {
 
 // ── DOWNLOAD ORIGINAL ───────────────────────────
 func DownloadOriginal(c *gin.Context) {
-	fileId := c.Param("id")
+    fileId := c.Param("id")
 
-	col := database.GetCollection("files")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+    col := database.GetCollection("files")
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
 
-	var record models.FileRecord
-	if err := col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
-		return
-	}
+    var record models.FileRecord
+    if err := col.FindOne(ctx, bson.M{"fileId": fileId}).Decode(&record); err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+        return
+    }
 
-	filename := record.Filename
-	if filename == "" {
-		filename = "restored_file"
-	}
+    // ── Option 1: Local backup ──
+    backupPath := record.BackupPath
+    if backupPath == "" { backupPath = record.VaultPath }
 
-	// ✅ Correct MIME type based on file extension
-	mimeType := getMimeType(filename)
+    if backupPath != "" {
+        if _, err := os.Stat(backupPath); err == nil {
+            // ✅ Force download — user browser madhe download hoil
+            mimeType := record.MimeType
+            if mimeType == "" {
+                mimeType = "application/octet-stream"
+            }
+            c.Header("Content-Disposition",
+                fmt.Sprintf(`attachment; filename="%s"`, record.Filename))
+            c.Header("Content-Type", mimeType)
+            c.Header("Access-Control-Expose-Headers", "Content-Disposition")
+            c.File(backupPath)
+            return
+        }
+    }
 
-	// ✅ Local backup check
-	for _, path := range []string{
-		record.BackupPath,
-		record.VaultPath,
-	} {
-		if path != "" && !strings.HasPrefix(path, "http") {
-			if _, err := os.Stat(path); err == nil {
-				c.Header("Content-Disposition",
-					fmt.Sprintf(`attachment; filename="%s"`, filename))
-				c.Header("Content-Type", mimeType)
-				c.Header("Access-Control-Allow-Origin", "*")
-				c.Header("Access-Control-Expose-Headers", "Content-Disposition")
-				c.File(path)
-				return
-			}
-		}
-	}
+    // ── Option 2: IPFS redirect ──
+    if record.IpfsCID != "" {
+        ipfsUrl := "https://gateway.pinata.cloud/ipfs/" + record.IpfsCID
+        c.Redirect(http.StatusTemporaryRedirect, ipfsUrl)
+        return
+    }
 
-	// ✅ IPFS — complete prefix clean + decrypt AES
-	if record.IpfsCID != "" {
-		cid := strings.TrimSpace(record.IpfsCID)
-		cid = strings.TrimPrefix(cid, "https://gateway.pinata.cloud/ipfs/")
-		cid = strings.TrimPrefix(cid, "https://ipfs.io/ipfs/")
-		cid = strings.TrimPrefix(cid, "/ipfs/")
-		cid = strings.TrimPrefix(cid, "ipfs/")
+    // ── Option 3: Cloud URL ──
+    if record.EncryptedURL != "" {
+        c.Redirect(http.StatusTemporaryRedirect, record.EncryptedURL)
+        return
+    }
 
-		// ✅ Correct URL
-		ipfsURL := "https://gateway.pinata.cloud/ipfs/" + cid
-		log.Printf("📥 Downloading from IPFS: %s → %s", filename, ipfsURL)
-
-		client := &http.Client{Timeout: 60 * time.Second}
-		resp, err := client.Get(ipfsURL)
-		if err != nil || resp.StatusCode != 200 {
-			log.Printf("⚠️ Pinata Gateway failed, trying public fallback: %v", err)
-			// Fallback gateway
-			ipfsURL = "https://ipfs.io/ipfs/" + cid
-			resp, err = client.Get(ipfsURL)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "IPFS unavailable"})
-				return
-			}
-		}
-		defer resp.Body.Close()
-
-		// Read encrypted bytes from IPFS
-		encryptedBytes, readErr := io.ReadAll(resp.Body)
-		if readErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read IPFS content"})
-			return
-		}
-
-		// Decrypt AES-256 (file was encrypted before IPFS upload)
-		plainBytes, decErr := utils.DecryptAES(encryptedBytes)
-		if decErr != nil {
-			log.Printf("⚠️ AES decrypt failed (serving raw): %v", decErr)
-			// If decrypt fails (maybe not encrypted), serve raw
-			plainBytes = encryptedBytes
-		}
-
-		// ✅ Correct headers for file type
-		c.Header("Content-Type", mimeType)
-		c.Header("Content-Disposition",
-			fmt.Sprintf(`attachment; filename="%s"`, filename))
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Expose-Headers", "Content-Disposition")
-
-		c.Data(http.StatusOK, mimeType, plainBytes)
-		return
-	}
-
-	c.JSON(http.StatusNotFound, gin.H{"error": "File not available for download"})
+    c.JSON(http.StatusNotFound, gin.H{
+        "error": "Original file not available for download",
+    })
 }
 
 // ✅ MIME type helper function

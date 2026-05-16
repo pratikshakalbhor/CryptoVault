@@ -88,29 +88,31 @@ export default function Verify({ walletAddress, onNotify }) {
   const handleRestore = async () => {
     if (!result?.fileId) return;
     setRestoring(true);
+
     try {
-      const res = await fetch(`${API}/files/${result.fileId}/download`);
+      // Backend se file fetch karo as binary blob
+      const res = await fetch(
+        `${API}/files/${result.fileId}/download`
+      );
+
       if (!res.ok) throw new Error('Download failed');
-      const blob = await res.blob();
-      const mime = res.headers.get('content-type') || blob.type || 'application/octet-stream';
-      const filename = result.filename || result.fileName || vaultFile?.filename || 'restored_file';
 
-      const url = URL.createObjectURL(blob);
-      const previewable = mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('text/');
+      // ✅ Binary blob — corruption nahi honar
+      const blob     = await res.blob();
+      const url      = URL.createObjectURL(blob);
+      const a        = document.createElement('a');
+      a.href         = url;
+      // ✅ Original filename sathe download
+      a.download     = result.filename || result.fileName || vaultFile?.filename || 'restored_file';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
-      if (previewable) {
-        setPreviewUrl(url);
-        setPreviewMime(mime);
-      } else {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-      }
-      if (typeof onNotify === 'function') onNotify('✅ File restored from vault backup', 'success');
+      if (typeof onNotify === 'function') onNotify('✅ File downloaded to your computer!', 'success');
+
     } catch (err) {
-      alert('Restore failed: ' + err.message);
+      if (typeof onNotify === 'function') onNotify('Download failed: ' + err.message, 'error');
     } finally {
       setRestoring(false);
     }
