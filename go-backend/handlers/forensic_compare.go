@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -14,11 +15,14 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"code.sajari.com/docconv"
 	"github.com/gin-gonic/gin"
+	"github.com/ledongthuc/pdf"
 	"go.mongodb.org/mongo-driver/bson"
 
 	"cryptovault/database"
 	"cryptovault/models"
+	"cryptovault/utils"
 )
 
 // ──────────────────────────────────────────────────────────
@@ -233,12 +237,59 @@ func ForensicCompare(c *gin.Context) {
 	fmt.Printf("[FORENSIC] Tampered resolved path: %q\n", tamperedPath)
 
 	if originalPath == "" {
+		fmt.Printf("[FORENSIC] ⚠️ Original local backup missing. Attempting IPFS recovery for CID: %s\n", record.IpfsCID)
+		
+		if record.IpfsCID != "" {
+			// Try to recover from IPFS
+			gateway := os.Getenv("PINATA_GATEWAY")
+			if gateway == "" { gateway = "https://gateway.pinata.cloud" }
+			url := fmt.Sprintf("%s/ipfs/%s", gateway, record.IpfsCID)
+			
+			resp, err := http.Get(url)
+			if err == nil && resp.StatusCode == http.StatusOK {
+				encryptedData, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				
+				// Decrypt
+				decryptedData, err := utils.DecryptAES(encryptedData)
+				if err == nil {
+					// Save to local backup for future use
+					workDir, _ := filepath.Abs(".")
+					cleanName := strings.ReplaceAll(record.Filename, " ", "_")
+					newPath := filepath.Join(workDir, "backup", record.FileID+"_"+cleanName)
+					os.MkdirAll(filepath.Dir(newPath), 0755)
+					
+					if err := os.WriteFile(newPath, decryptedData, 0644); err == nil {
+						fmt.Printf("[FORENSIC] ✅ Recovered original from IPFS → %s\n", newPath)
+						originalPath = newPath
+						// Also update record in background so we don't have to fetch again
+						go func() {
+							col := database.GetCollection("files")
+							ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+							defer cancel()
+							_, _ = col.UpdateOne(ctx, bson.M{"fileId": fileId}, bson.M{"$set": bson.M{"backupPath": newPath}})
+						}()
+					}
+				} else {
+					fmt.Printf("[FORENSIC] ❌ IPFS Decryption failed: %v\n", err)
+				}
+			} else {
+				if err != nil {
+					fmt.Printf("[FORENSIC] ❌ IPFS Fetch failed: %v\n", err)
+				} else {
+					fmt.Printf("[FORENSIC] ❌ IPFS Fetch status: %d\n", resp.StatusCode)
+				}
+			}
+		}
+	}
+
+	if originalPath == "" {
 		fmt.Printf("[FORENSIC]\nBackup path: %s\nVault path: %s\nExists: false\nFileId: %s\n", record.BackupPath, record.VaultPath, fileId)
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
 			"error":   "Original backup file not found on disk",
 			"fileId":  fileId,
-			"hint":    "File may have been deleted or never saved locally",
+			"hint":    "File may have been deleted or never saved locally. Try uploading a new version.",
 		})
 		return
 	}
@@ -310,9 +361,58 @@ func ForensicCompare(c *gin.Context) {
 	// 7. Build content fields
 	//    • For text files: return decoded UTF-8 strings (for diff viewer)
 	//    • For binary files: return base64-encoded data-URL (for preview)
+	//    • For docx: extract text and treat as text for diff viewer
 	var originalContent, modifiedContent string
 
-	if isText {
+	if ext == ".docx" {
+		resOrig, errOrig := docconv.Convert(bytes.NewReader(originalData), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", true)
+		resTamp, errTamp := docconv.Convert(bytes.NewReader(tamperedData), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", true)
+		if errOrig == nil && errTamp == nil {
+			originalContent = resOrig.Body
+			modifiedContent = resTamp.Body
+			isText = true
+			isBinary = false
+		} else {
+			// Fallback to binary preview if extraction fails
+			isText = false
+			isBinary = true
+			b64Orig := base64.StdEncoding.EncodeToString(originalData)
+			b64Tamp := base64.StdEncoding.EncodeToString(tamperedData)
+			originalContent = "data:" + mimeType + ";base64," + b64Orig
+			modifiedContent = "data:" + mimeType + ";base64," + b64Tamp
+		}
+	} else if ext == ".pdf" {
+		pdfR1, err1 := pdf.NewReader(bytes.NewReader(originalData), int64(len(originalData)))
+		pdfR2, err2 := pdf.NewReader(bytes.NewReader(tamperedData), int64(len(tamperedData)))
+		if err1 == nil && err2 == nil {
+			pt1, errPt1 := pdfR1.GetPlainText()
+			pt2, errPt2 := pdfR2.GetPlainText()
+			if errPt1 == nil && errPt2 == nil {
+				b1, _ := io.ReadAll(pt1)
+				b2, _ := io.ReadAll(pt2)
+				originalContent = string(b1)
+				modifiedContent = string(b2)
+				isText = true
+				isBinary = false
+			} else {
+				// Fallback to binary preview
+				isText = false
+				isBinary = true
+				b64Orig := base64.StdEncoding.EncodeToString(originalData)
+				b64Tamp := base64.StdEncoding.EncodeToString(tamperedData)
+				originalContent = "data:" + mimeType + ";base64," + b64Orig
+				modifiedContent = "data:" + mimeType + ";base64," + b64Tamp
+			}
+		} else {
+			// Fallback to binary preview
+			isText = false
+			isBinary = true
+			b64Orig := base64.StdEncoding.EncodeToString(originalData)
+			b64Tamp := base64.StdEncoding.EncodeToString(tamperedData)
+			originalContent = "data:" + mimeType + ";base64," + b64Orig
+			modifiedContent = "data:" + mimeType + ";base64," + b64Tamp
+		}
+	} else if isText {
 		originalContent = string(originalData)
 		modifiedContent = string(tamperedData)
 	} else {
@@ -329,6 +429,36 @@ func ForensicCompare(c *gin.Context) {
 
 	fmt.Printf("[FORENSIC] ✅ Analysis complete — identical=%v score=%d level=%s text=%v\n",
 		isIdentical, score, level, isText)
+
+	var changes []map[string]interface{}
+
+	if isText && !isIdentical {
+		origLines := strings.Split(originalContent, "\n")
+		tampLines := strings.Split(modifiedContent, "\n")
+		
+		maxLines := len(origLines)
+		if len(tampLines) > maxLines { maxLines = len(tampLines) }
+		
+		for i := 0; i < maxLines && len(changes) < 50; i++ {
+			orig := ""
+			tamp := ""
+			if i < len(origLines) { orig = origLines[i] }
+			if i < len(tampLines) { tamp = tampLines[i] }
+			
+			if orig == tamp { continue }
+			
+			changeType := "modified"
+			if orig == "" { changeType = "added" }
+			if tamp == "" { changeType = "removed" }
+			
+			changes = append(changes, map[string]interface{}{
+				"line":   i + 1,
+				"type":   changeType,
+				"before": orig,
+				"after":  tamp,
+			})
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		// Content for diff/preview panels
@@ -358,6 +488,12 @@ func ForensicCompare(c *gin.Context) {
 		// Diff capability flags
 		"isTextComparable": isText,
 		"isBinary":         isBinary,
+		// Changes
+		"changes": changes,
+		"changeSummary": map[string]interface{}{
+			"totalChanges": len(changes),
+			"hasChanges":   len(changes) > 0,
+		},
 	})
 }
 
@@ -388,12 +524,14 @@ func ForensicRestore(c *gin.Context) {
 	// Determine destination (vault path)
 	vaultPath := record.VaultPath
 	if vaultPath == "" {
-		vaultPath = backupPath // restore in-place
+		// Rebuild the standard vault path if it was empty in old records
+		cleanName := strings.ReplaceAll(record.Filename, " ", "_")
+		vaultPath = filepath.Join(".", "vault", fileId+"_"+cleanName)
 	}
 	absVault, _ := filepath.Abs(vaultPath)
 	os.MkdirAll(filepath.Dir(absVault), 0755)
 
-	// Perform copy
+	// Perform copy (overwrite)
 	source, err := os.Open(backupPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot open backup: " + err.Error()})
@@ -401,7 +539,8 @@ func ForensicRestore(c *gin.Context) {
 	}
 	defer source.Close()
 
-	destination, err := os.Create(absVault)
+	// Truncate and overwrite the vault file
+	destination, err := os.OpenFile(absVault, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot write restored file: " + err.Error()})
 		return
@@ -418,8 +557,10 @@ func ForensicRestore(c *gin.Context) {
 	now := time.Now()
 	_, _ = col.UpdateOne(ctx, bson.M{"fileId": fileId}, bson.M{
 		"$set": bson.M{
-			"status":    "valid",
-			"updatedAt": now,
+			"status":     "VALID",
+			"updatedAt":  now,
+			"restoredAt": now,
+			"tampered":   false,
 		},
 	})
 

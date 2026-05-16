@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
+import toast from 'react-hot-toast';
 import '../styles/ForensicModal.css';
 
 const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/api\/?$/, '') + '/api';
@@ -71,6 +72,17 @@ function FilePreview({ content, mimeType, label, status }) {
           <img src={content} alt={label} />
         ) : isPDF && isDataURL ? (
           <iframe src={content} title={label} />
+        ) : isDataURL ? (
+          <div className="binary-evidence-card">
+            <h4>🛡️ Binary Evidence Analysis</h4>
+            <div className="binary-evidence-details">
+              <p><strong>Format:</strong> <code>{mimeType || 'Unknown Binary'}</code></p>
+              <p><strong>Status:</strong> {status === 'original' ? 'Blockchain Sealed' : 'Current Snapshot'}</p>
+              <p className="binary-hidden-msg">
+                Raw binary content hidden for safety and performance.
+              </p>
+            </div>
+          </div>
         ) : content?.startsWith('[') ? (
           <div className="forensic-preview-unavailable">
             {content}
@@ -148,10 +160,11 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
         throw new Error(msg);
       }
       setRestored(true);
+      toast.success('✔ Integrity restored successfully');
       onRestored?.();
       await fetchData(); // refresh comparison after restore
     } catch (e) {
-      alert('Restore failed: ' + e.message);
+      toast.error('Restore failed: ' + e.message);
     } finally {
       setRestoring(false);
     }
@@ -340,7 +353,80 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
                         </p>
                       </div>
                     ) : (
-                      <ReactDiffViewer
+                      <>
+                        {/* Changes Summary — user la clearly distil */}
+                        {!isBinary && !data.isIdentical && data.changes?.length > 0 && (
+                          <div style={{
+                            background: 'rgba(255,68,68,.06)',
+                            border: '1px solid rgba(255,68,68,.2)',
+                            borderRadius: 12, padding: '16px 20px', marginBottom: 16,
+                          }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#ff4444', marginBottom: 12 }}>
+                              🔬 Exact Changes Detected ({data.changes.length})
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+                              {data.changes.map((ch, i) => (
+                                <div key={i} style={{
+                                  padding: '8px 12px', borderRadius: 8,
+                                  background: ch.type === 'added'
+                                    ? 'rgba(0,200,150,.08)'
+                                    : ch.type === 'removed'
+                                    ? 'rgba(255,68,68,.08)'
+                                    : 'rgba(245,158,11,.08)',
+                                  border: `1px solid ${
+                                    ch.type === 'added' ? 'rgba(0,200,150,.25)'
+                                    : ch.type === 'removed' ? 'rgba(255,68,68,.25)'
+                                    : 'rgba(245,158,11,.25)'}`,
+                                }}>
+                                  {/* Line number + type */}
+                                  <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, padding: '1px 7px',
+                                      borderRadius: 20, textTransform: 'uppercase',
+                                      color: ch.type === 'added' ? '#00c896'
+                                        : ch.type === 'removed' ? '#ff4444' : '#F59E0B',
+                                      background: ch.type === 'added' ? 'rgba(0,200,150,.15)'
+                                        : ch.type === 'removed' ? 'rgba(255,68,68,.15)' : 'rgba(245,158,11,.15)',
+                                    }}>
+                                      {ch.type}
+                                    </span>
+                                    <span style={{ fontSize: 10, color: '#7a95b0',
+                                      fontFamily: 'monospace' }}>
+                                      Line {ch.line}
+                                    </span>
+                                  </div>
+
+                                  {/* Before */}
+                                  {ch.before && (
+                                    <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                                      <span style={{ color: '#ff4444', fontWeight: 700,
+                                        fontFamily: 'monospace', flexShrink: 0 }}>−</span>
+                                      <code style={{ fontSize: 12, color: '#ff8888',
+                                        fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                        {ch.before}
+                                      </code>
+                                    </div>
+                                  )}
+
+                                  {/* After */}
+                                  {ch.after && (
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                      <span style={{ color: '#00c896', fontWeight: 700,
+                                        fontFamily: 'monospace', flexShrink: 0 }}>+</span>
+                                      <code style={{ fontSize: 12, color: '#88ffcc',
+                                        fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                        {ch.after}
+                                      </code>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <ReactDiffViewer
                         oldValue={data.original || ''}
                         newValue={data.modified || ''}
                         splitView={true}
@@ -351,6 +437,7 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
                         rightTitle="⚠️ Current / Modified Version"
                         hideLineNumbers={false}
                       />
+                      </>
                     )}
                   </div>
                 )}
@@ -363,12 +450,14 @@ export default function ForensicModal({ fileId, filename, onClose, onRestored })
                       mimeType={data.mimeType}
                       label="Original (Sealed)"
                       status="original"
+                      data={data}
                     />
                     <FilePreview
                       content={data.modified}
                       mimeType={data.mimeType}
                       label="Current Version"
                       status="modified"
+                      data={data}
                     />
                   </div>
                 )}
