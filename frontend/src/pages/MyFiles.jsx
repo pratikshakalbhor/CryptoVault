@@ -107,11 +107,8 @@ export default function MyFiles({ walletAddress }) {
     setProcessing(fileId);
     try {
       const { restoreFile } = await import('../utils/api');
-      const res = await restoreFile(fileId, name, walletAddress);
-      if (res && res.restoreUrl) {
-        window.open(res.restoreUrl, '_blank');
-      }
-      toast.success(`✅ Restored: ${res.filename || name}`);
+      await restoreFile(fileId, walletAddress);
+      toast.success(`${name} has been restored in the vault.`);
       await fetchFiles();
     } catch (err) {
       toast.error(err.message || "Restoration failed");

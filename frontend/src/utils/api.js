@@ -93,41 +93,14 @@ export const restoreFromArchive = async (fileId, wallet) => {
 };
 
 // ─────────────────────────────────────────
-// 5. RESTORE FILE (Proper Binary Download — no corruption)
+// 5. RESTORE FILE (Internal Backend Override Only)
 // ─────────────────────────────────────────
-export const restoreFile = async (fileId, filename = 'restored_file', wallet) => {
+export const restoreFile = async (fileId, wallet) => {
   try {
-    // Use DownloadOriginal which serves raw binary bytes from local backup or IPFS
-    const response = await axios.get(`${BASE_URL}/api/files/${fileId}/download`, {
-      responseType: 'blob',
-      params: { wallet: wallet?.toLowerCase() },
-    });
-
-    // Extract real filename from Content-Disposition if available
-    const disposition = response.headers['content-disposition'] || '';
-    const match = disposition.match(/filename="?([^";\n]+)"?/i);
-    const realFilename = match ? match[1] : filename;
-
-    // Preserve MIME type from response header
-    const mimeType = response.headers['content-type'] || 'application/octet-stream';
-
-    // Create Blob with the correct MIME type (preserves binary integrity)
-    const blob = new Blob([response.data], { type: mimeType });
-    downloadBlob(blob, realFilename);
-
-    return { success: true, message: 'File restored and downloaded', filename: realFilename };
+    const res = await axios.post(`${BASE_URL}/api/restore/${fileId}`, { wallet: wallet?.toLowerCase() });
+    return res.data;
   } catch (err) {
     console.error('Restore error:', err);
-    // If server returned a JSON error inside a blob, parse it
-    if (err.response?.data instanceof Blob) {
-      try {
-        const text = await err.response.data.text();
-        const parsed = JSON.parse(text);
-        throw new Error(parsed.error || parsed.message || 'Restoration failed');
-      } catch (parseErr) {
-        // not JSON
-      }
-    }
     throw new Error(err.response?.data?.error || err.message || 'Restoration failed');
   }
 };
