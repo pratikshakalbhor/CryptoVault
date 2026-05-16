@@ -207,20 +207,43 @@ func UploadFile(c *gin.Context) {
 			txHash = clientTxHash
 		}
 
-		// ── SAVE BACKUP ──
-		backupDir := "./vault"
-		if _, err := os.Stat(backupDir); os.IsNotExist(err) {
-			os.MkdirAll(backupDir, 0755)
+		// ── SAVE FILES TO DISK (backup + vault) ──
+		// Resolve absolute base directory so paths are always correct regardless
+		// of which directory the binary is launched from.
+		workDir, wdErr := filepath.Abs(".")
+		if wdErr != nil {
+			workDir = "."
 		}
-		
+
 		cleanFilename := strings.ReplaceAll(header.Filename, " ", "_")
-		backupPath := filepath.Join(backupDir, fileID+"_"+cleanFilename)
-		
-		err = os.WriteFile(backupPath, fileBytes, 0644)
-		if err != nil {
+		safeFileName := fileID + "_" + cleanFilename
+
+		// 1. Backup dir — immutable original reference
+		absBackupDir := filepath.Join(workDir, "backup")
+		if err := os.MkdirAll(absBackupDir, 0755); err != nil {
+			log.Printf("⚠️ Could not create backup dir: %v", err)
+		}
+		absBackupPath := filepath.Join(absBackupDir, safeFileName)
+
+		if err := os.WriteFile(absBackupPath, fileBytes, 0644); err != nil {
 			log.Printf("⚠️ Backup save failed: %v", err)
+			absBackupPath = "" // mark as missing so forensic endpoint knows
 		} else {
-			log.Printf("📥 Backup saved to: %s", backupPath)
+			log.Printf("📥 Backup saved → %s", absBackupPath)
+		}
+
+		// 2. Vault dir — working/tamperable copy
+		absVaultDir := filepath.Join(workDir, "vault")
+		if err := os.MkdirAll(absVaultDir, 0755); err != nil {
+			log.Printf("⚠️ Could not create vault dir: %v", err)
+		}
+		absVaultPath := filepath.Join(absVaultDir, safeFileName)
+
+		if err := os.WriteFile(absVaultPath, fileBytes, 0644); err != nil {
+			log.Printf("⚠️ Vault save failed: %v", err)
+			absVaultPath = ""
+		} else {
+			log.Printf("📦 Vault copy saved → %s", absVaultPath)
 		}
 
 		// New file
@@ -237,8 +260,8 @@ func UploadFile(c *gin.Context) {
 			WalletAddress: wallet,
 			TxHash:        txHash,
 			Status:        "valid",
-			BackupPath:    backupPath,
-			VaultPath:     backupPath,
+			BackupPath:    absBackupPath,
+			VaultPath:     absVaultPath,
 			ExpiryDate:    expiryDate,
 			UploadedAt:    time.Now(),
 			Version:       1,

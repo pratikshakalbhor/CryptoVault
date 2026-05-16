@@ -123,41 +123,78 @@ func detectMime(filename string) string {
 }
 
 // findFile searches several candidate paths when the stored path is stale or
-// missing.  It returns the first path that exists, or "" if none do.
+// missing. It returns the first path that exists on disk, or "" if none do.
 func findFile(storedPath, fileId, filename, subdir string) string {
+	// Resolve the current working directory once for building relative paths.
+	cwd, _ := filepath.Abs(".")
+
 	candidates := []string{}
 
-	// 1. Exact stored path (most reliable when present)
+	// 1. Exact stored absolute path (most reliable for new uploads)
 	if storedPath != "" {
 		candidates = append(candidates, storedPath)
+		// Also try it relative to cwd in case it was stored as relative
+		if !filepath.IsAbs(storedPath) {
+			candidates = append(candidates, filepath.Join(cwd, storedPath))
+		}
 	}
 
-	// 2. Standard pattern: ./vault/<fileId>_<cleanedFilename>
+	// 2. Standard pattern: <subdir>/<fileId>_<cleanedFilename> relative to cwd
 	if filename != "" {
 		cleanName := strings.ReplaceAll(filename, " ", "_")
+		safeFile := fileId + "_" + cleanName
 		candidates = append(candidates,
-			filepath.Join("vault", fileId+"_"+cleanName),
-			filepath.Join("vault", fileId+"_"+cleanName),
+			filepath.Join(cwd, subdir, safeFile),
+			filepath.Join(cwd, "vault", safeFile),
+			filepath.Join(cwd, "backup", safeFile),
 		)
 	}
 
-	// 3. Legacy internal/storage pattern (old forensic_compare logic)
+	// 3. Legacy internal/storage pattern
 	if filename != "" {
 		ext := filepath.Ext(filename)
 		candidates = append(candidates,
-			filepath.Join("internal", "storage", subdir, fileId+ext),
+			filepath.Join(cwd, "internal", "storage", subdir, fileId+ext),
 		)
 	}
 
+	fmt.Printf("[findFile] subdir=%s fileId=%s — checking %d candidates\n", subdir, fileId, len(candidates))
 	for _, p := range candidates {
+		if p == "" {
+			continue
+		}
 		abs, err := filepath.Abs(p)
 		if err != nil {
 			continue
 		}
-		if _, err := os.Stat(abs); err == nil {
+		if _, statErr := os.Stat(abs); statErr == nil {
+			fmt.Printf("[findFile] ✅ FOUND: %s\n", abs)
 			return abs
 		}
+		fmt.Printf("[findFile] ❌ not found: %s\n", abs)
 	}
+
+	// 4. Last resort: scan the subdir for any file whose name starts with fileId
+	scanDirs := []string{
+		filepath.Join(cwd, subdir),
+		filepath.Join(cwd, "backup"),
+		filepath.Join(cwd, "vault"),
+	}
+	for _, dir := range scanDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasPrefix(e.Name(), fileId) {
+				found := filepath.Join(dir, e.Name())
+				fmt.Printf("[findFile] ✅ SCANNED FOUND: %s\n", found)
+				return found
+			}
+		}
+	}
+
+	fmt.Printf("[findFile] ❌ No file found for fileId=%s subdir=%s\n", fileId, subdir)
 	return ""
 }
 
@@ -179,8 +216,9 @@ func ForensicCompare(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("[FORENSIC] ❌ File not found in MongoDB: %v\n", err)
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":  "File record not found",
-			"fileId": fileId,
+			"success": false,
+			"error":   "File record not found",
+			"fileId":  fileId,
 		})
 		return
 	}
@@ -195,14 +233,16 @@ func ForensicCompare(c *gin.Context) {
 	fmt.Printf("[FORENSIC] Tampered resolved path: %q\n", tamperedPath)
 
 	if originalPath == "" {
-		fmt.Printf("[FORENSIC] ❌ No backup/original file found\n")
+		fmt.Printf("[FORENSIC]\nBackup path: %s\nVault path: %s\nExists: false\nFileId: %s\n", record.BackupPath, record.VaultPath, fileId)
 		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
 			"error":   "Original backup file not found on disk",
 			"fileId":  fileId,
 			"hint":    "File may have been deleted or never saved locally",
 		})
 		return
 	}
+	fmt.Printf("[FORENSIC]\nBackup path: %s\nVault path: %s\nExists: true\nFileId: %s\n", originalPath, tamperedPath, fileId)
 
 	// 3. Read original file (required)
 	originalData, err := os.ReadFile(originalPath)
@@ -253,8 +293,19 @@ func ForensicCompare(c *gin.Context) {
 	if mimeType == "" {
 		mimeType = detectMime(record.Filename)
 	}
-	isText := isTextContent(originalData)
+
+	// Step 4: Extension-based text diff support
+	ext := strings.ToLower(filepath.Ext(record.Filename))
+	textExts := map[string]bool{
+		".txt": true, ".md": true, ".json": true, ".js": true,
+		".ts": true, ".html": true, ".css": true, ".go": true,
+		".java": true, ".py": true,
+	}
+	
+	// A file is comparable if it's in the allowed list AND is valid text
+	isText := textExts[ext] && isTextContent(originalData)
 	isBinary := !isText
+
 
 	// 7. Build content fields
 	//    • For text files: return decoded UTF-8 strings (for diff viewer)
